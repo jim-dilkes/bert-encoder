@@ -176,8 +176,6 @@ for epoch in range(n_epochs):
 
         # Backward pass
         loss = log_likelihood.mean()
-
-        # Calculate log likelihood
         loss.backward()
         optimizer.step()
         checkpoint_losses.append((i, loss.item()))
