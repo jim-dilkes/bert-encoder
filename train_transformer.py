@@ -171,10 +171,13 @@ for epoch in range(n_epochs):
         
         # Extract negative likelihoods of the masked tokens
         ground_truth_likelihoods = all_token_likelihoods.gather(-1, batch.unsqueeze(-1)).squeeze()
-        masked_ground_truth_likelihoods = torch.neg(ground_truth_likelihoods[masked_batch_bool])
+        masked_ground_truth_likelihoods = ground_truth_likelihoods[masked_batch_bool]
+        log_likelihood = torch.neg(torch.log(masked_ground_truth_likelihoods))
 
         # Backward pass
-        loss = masked_ground_truth_likelihoods.mean()
+        loss = log_likelihood.mean()
+
+        # Calculate log likelihood
         loss.backward()
         optimizer.step()
         checkpoint_losses.append((i, loss.item()))
