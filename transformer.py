@@ -28,7 +28,7 @@ def generate_pe_matrix(embedding_dim:int, n_input_tokens:int) -> torch.Tensor:
     return interleaved_matrix
 
 
-class EncoderEmbedding(nn.Module):
+class Embedding(nn.Module):
     """Embedding layer for the encoder transformer model."""
     def __init__(self, vocab_size:int, embedding_dim:int, n_input_tokens:int, model_dim:int, padding_idx:int):
         super().__init__()
@@ -119,7 +119,7 @@ class MultiHeadSelfAttention(nn.Module):
         return out
     
 
-class EndoderFeedForward(nn.Module):
+class FeedForward(nn.Module):
     """
     Feed forward module for the encoder transformer model.
     model_dim -> ff_dim -> ReLU -> model_dim
@@ -147,7 +147,7 @@ class EncoderTransformer(nn.Module):
         super().__init__()      
 
         ## Token and positional embedding layer
-        self.embedding = EncoderEmbedding(vocab_size=vocab_size, 
+        self.embedding = Embedding(vocab_size=vocab_size, 
                                                  embedding_dim=embedding_dim, 
                                                  n_input_tokens=sequence_length, 
                                                  model_dim=model_dim,
@@ -162,7 +162,7 @@ class EncoderTransformer(nn.Module):
                                                 k_dim=k_dim,
                                                 v_dim=v_dim)
                                                 ))
-            mhsa_modules.append((f'ff_{i}', EndoderFeedForward(model_dim=model_dim, ff_dim=ff_dim)))
+            mhsa_modules.append((f'ff_{i}', FeedForward(model_dim=model_dim, ff_dim=ff_dim)))
         self.mhsa = nn.Sequential(OrderedDict(mhsa_modules))
 
         ## Output layer - likelihood of each token at each position
