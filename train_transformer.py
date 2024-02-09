@@ -17,6 +17,66 @@ padding_idx = tokenizer.encode('[PAD]').ids[0]
 mask_idx = tokenizer.encode('[MASK]').ids[0]
 
 
+def save_checkpoint(transformer, optimizer, epoch, filepaths, file_idx,
+                    checkpoint_dir, max_checkpoints=5):
+    """ Args:
+        transformer (nn.Module): The model to save
+        optimiser (torch.optim): The optimizer to save
+        epoch (int): The current epoch
+        filepaths (list): The ordered list of filepaths
+        file_idx (int): The current file index
+        checkpoint_dir (str): The directory to save the checkpoint
+        elapsed (float): The time elapsed since training began
+        loss (float): The mean masked likelihood
+        max_checkpoints (int): The maximum number of checkpoints to keep
+    """
+    
+    print(f'\nSaving checkpoint for epoch {epoch}, beginning with file {file_idx}...')
+
+    # Remove old checkpoints if there are too many
+    checkpoint_filepath = f'{checkpoint_dir}\\epoch{epoch}_file{file_idx}.pt'    
+    checkpoint_files = data_ops.gather_files(checkpoint_dir, file_extension='.pt')
+    while len(checkpoint_files) > max_checkpoints-1:
+        checkpoint_files = sorted(checkpoint_files, key=lambda x: os.path.getctime(x))
+        oldest_file = checkpoint_files.pop(0)
+        os.remove(oldest_file)
+
+    # Save the checkpoint
+    torch.save({
+        'epoch': epoch,
+        'start_file_idx': file_idx, # +1 to start from the next file
+        'ordered_filepaths': filepaths,
+        'model_state_dict': transformer.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict()
+        }, checkpoint_filepath)
+
+
+def load_checkpoint(checkpoint_name, checkpoint_dir, transformer, optimizer):
+    """ Load a checkpoint and return the epoch, file index, and ordered filepaths.
+        Load model and optimizer in place, return the other values.
+
+        Args:
+            checkpoint_name (str): Name of the checkpoint file
+            checkpoint_dir (str): Directory where the checkpoint is stored
+            transformer (nn.Module): The model to load the checkpoint into
+            optimizer (torch.optim): The optimizer to load the checkpoint into
+    """
+    checkpoint = torch.load(f"{checkpoint_dir}\\{checkpoint_name}")
+    transformer.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    return checkpoint['epoch'], checkpoint['start_file_idx'], checkpoint['ordered_filepaths']
+
+
+def write_loss(losses, loss_epoch_dir, loss_idx):
+    if not os.path.exists(loss_epoch_dir):
+        os.makedirs(loss_epoch_dir)
+    with open(f'{loss_epoch_dir}\\{loss_idx}.txt', 'w') as f:
+        # Write the losses from a list to one line per loss
+        for batch_loss in losses:
+            f.write(f"{batch_loss[0]},{batch_loss[1]}\n")
+    return
+
+
 ## Model Params
 vocab_size = 15000
 sequence_length = 128
@@ -40,57 +100,45 @@ n_heads = int(n_heads)
 root_dir = 'data_tokenized'
 batch_size = 150
 n_epochs = 6
-learning_rates = [0.001, 3e-4, 1e-4]
+lr = 3e-4
 
 mask_probability = 0.15
 
 checkpoint_dir = 'checkpoints'
-checkpoint_every = 1000
+checkpoint_every = 2
 max_checkpoints = 5
-checkpoint_name = 'checkpoint_epoch0_batch23999.pt'
+checkpoint_name = 'epoch0_file4.pt'
 
 loss_dir = 'losses'
 loss_idx = 0
 
-restart_training = True
-if restart_training:
-    checkpoint_name=None
+transformer = EncoderTransformer(vocab_size, sequence_length, n_layers, d_embedding, d_model, d_k, d_v, n_heads, d_ff, padding_idx).to(device)
+optimizer = optim.Adam(transformer.parameters())
+
+FLAG_LOAD_CHECKPOINT = True
+
+if not FLAG_LOAD_CHECKPOINT:
     data_ops.reset_directory(checkpoint_dir)
     data_ops.reset_directory(loss_dir)
+    
+    optimizer = optim.Adam(transformer.parameters(), lr=lr)
+    
+    start_epoch = 0
+    file_idx = 0
 
+    filepaths = data_ops.gather_files(root_dir, file_extension='.pt')
+    np.random.shuffle(filepaths)
 
-def checkpoint(transformer, epoch, batch, checkpoint_dir, elapsed, loss, max_checkpoints=5):
-    print(f'\nSaving checkpoint... \nTime Elapsed: {elapsed/60:.2f} | Batch {i+1} ({(elapsed/(i+1)):.2f}) | Mean Masked Likelihood: {loss*-1}')
-    torch.save(transformer.state_dict(), f'{checkpoint_dir}\\checkpoint_epoch{epoch}_batch{batch+1}.pt')
-    checkpoint_files = data_ops.gather_files(checkpoint_dir, file_extension='.pt')
-    while len(checkpoint_files) > max_checkpoints:
-        checkpoint_files = sorted(checkpoint_files, key=lambda x: os.path.getctime(x), reverse=True)
-        oldest_file = checkpoint_files.pop(0)
-        os.remove(oldest_file)
-    return
+    checkpointed_files = 0
+else:
+    optimizer = optim.Adam(transformer.parameters())
+    start_epoch, file_idx, filepaths = load_checkpoint(checkpoint_name, checkpoint_dir, transformer, optimizer)
+    checkpointed_files = file_idx
 
-
-def write_loss(losses, loss_epoch_dir, loss_idx):
-    if not os.path.exists(loss_epoch_dir):
-        os.makedirs(loss_epoch_dir)
-    with open(f'{loss_epoch_dir}\\{loss_idx}.txt', 'w') as f:
-        # Write the losses from a list to one line per loss
-        for batch_loss in losses:
-            f.write(f"{batch_loss[0]},{batch_loss[1]}\n")
-    return
-
-
-filepaths = data_ops.gather_files(root_dir, file_extension='.pt')
-np.random.shuffle(filepaths)
-
-
-transformer = EncoderTransformer(vocab_size, sequence_length, n_layers, d_embedding, d_model, d_k, d_v, n_heads, d_ff, padding_idx).to(device)
-if checkpoint_name is not None:
-    transformer.load_state_dict(torch.load(checkpoint_name))
 
 print("Training transformer model:")
 print(transformer)
-print(f"\nNumber of parameters:{sum(p.numel() for p in transformer.parameters() if p.requires_grad)}\n")
+print(f"\nNumber of parameters: {sum(p.numel() for p in transformer.parameters() if p.requires_grad)}\n")
 
 
 losses = []
@@ -99,17 +147,20 @@ start = time.time()
 for epoch in range(n_epochs):
     print(f"\nEpoch {epoch}/{n_epochs-1}")
 
-    # Set learning rate for this epoch
-    if len(learning_rates) > 1:
-        lr = learning_rates.pop(0)
-    else:
-        lr = learning_rates[0]
-    optimizer = optim.Adam(transformer.parameters(), lr=lr)
-
     # Load data
-    data_loader = data_ops.DataLoader(filepaths, batch_size=batch_size, shuffle_contents=True, device=device)
-    epoch_losses = []
-    for i, batch in enumerate(data_loader):
+    data_loader = data_ops.DataLoader(filepaths, batch_size=batch_size, file_idx=file_idx, shuffle_contents=True, device=device)
+    checkpoint_losses = []
+    for i, batch, file_idx in data_loader:
+        # Checkpoint
+        if file_idx % checkpoint_every == 0 and file_idx > checkpointed_files:
+            write_loss(checkpoint_losses, f"{loss_dir}\\{epoch}", loss_idx)
+            loss_idx += 1
+            save_checkpoint(transformer, optimizer, epoch, filepaths, file_idx,
+                            checkpoint_dir, max_checkpoints=max_checkpoints)
+            elapsed = time.time()-start
+            print(f'\nTime Elapsed: {elapsed/60:.2f} | File {file_idx} ({(elapsed/(file_idx+1)):.2f}) | Mean Masked Likelihood: {loss*-1}')
+            checkpoint_losses = []
+            checkpointed_files += checkpoint_every
         optimizer.zero_grad()
 
         # Mask tokens
@@ -126,15 +177,13 @@ for epoch in range(n_epochs):
         loss = masked_ground_truth_likelihoods.mean()
         loss.backward()
         optimizer.step()
-        epoch_losses.append((i, loss.item()))
+        checkpoint_losses.append((i, loss.item()))
 
-        # Checkpoint
-        if i % checkpoint_every == checkpoint_every-1:
-            write_loss(epoch_losses, f"{loss_dir}\\{epoch}", loss_idx)
-            loss_idx += 1
-            epoch_losses = []
-            checkpoint(transformer, epoch, i, checkpoint_dir, time.time()-start, loss.item(), max_checkpoints=max_checkpoints)
 
-    write_loss(epoch_losses, f"{loss_dir}\\{epoch}", loss_idx)
+
+    write_loss(checkpoint_losses, f"{loss_dir}\\{epoch}", loss_idx)
     loss_idx += 1
-    checkpoint(transformer, epoch, i, checkpoint_dir, time.time()-start, loss.item(), max_checkpoints=max_checkpoints)
+    save_checkpoint(transformer, optimizer, epoch, filepaths, file_idx=0,
+                    checkpoint_dir=checkpoint_dir, max_checkpoints=max_checkpoints)
+    
+    checkpointed_files = 0

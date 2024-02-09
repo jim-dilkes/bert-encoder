@@ -58,7 +58,15 @@ class DataLoader():
     - The hanging batch is prepended to the next file's data
     - If there is not enough data to fill a final batch, the final hanging batch is ignored to avoid a partial batch
     """
-    def __init__(self, filepaths:list[str], batch_size:int, shuffle_contents:bool=True, device:str='cpu'):
+    def __init__(self, filepaths:list[str], batch_size:int, file_idx:int | None = None, shuffle_contents:bool=True, device:str='cpu'):
+        """ Args:
+        - filepaths: list of filepaths to load data from
+        - batch_size: number of examples per batch
+        - file_idx: index of the first file to load
+        - shuffle_contents: shuffle the contents of each file
+        - device: device to load data onto
+
+        """
         self.filepaths = filepaths
         self.batch_size = batch_size
         self.n_files = len(filepaths)
@@ -67,19 +75,28 @@ class DataLoader():
 
         self.device = device
 
+        self.file_idx = file_idx if file_idx < self.n_files else None
+        self.batch_counter = 0
+
     def __iter__(self):
+        # If DataLoader is initially set to a file_idx, start from that file
+        if self.file_idx is not None and self.batch_counter == 0:
+            self.file_idx = self.file_idx 
+        # If DataLoader is reset part way through an epoch, start from 0
+        else:
+            self.file_idx = 0
+
         self.batch_counter = 0
         self.example_counter = 0
-        
-        self.file_idx = 0
+
         self.hanging_batch = None
         self._load_next_buffer()
-
 
         return self
     
     def __next__(self):
         if self.buffer_idx >= self.buffer_size:
+            self.file_idx += 1
             self._load_next_buffer()
             
         if self.example_buffer is None:
@@ -87,13 +104,14 @@ class DataLoader():
                 final_batch = self.hanging_batch
                 self.hanging_batch = None
                 return final_batch
+            self.file_idx = None # Reset file_idx to None
             raise StopIteration
         
         batch = self.example_buffer[self.buffer_idx]
         self.buffer_idx += 1
         self.batch_counter += 1
         self.example_counter += self.batch_size
-        return batch
+        return self.batch_counter, batch, self.file_idx
 
     def _load_next_buffer(self)->torch.Tensor | None:
         def _get_next_file_data():
@@ -101,7 +119,6 @@ class DataLoader():
                 return None
             else:
                 file_path = self.filepaths[self.file_idx]
-                self.file_idx += 1
                 data = torch.load(file_path, map_location=self.device)
                 if isinstance(data, list):
                     data = torch.cat(data, dim=0)
@@ -113,7 +130,7 @@ class DataLoader():
 
         data = _get_next_file_data()
         self.example_buffer, self.hanging_batch = self._prepare_batches(data, self.batch_size, self.hanging_batch)
-        self.buffer_size = len(self.example_buffer)
+        self.buffer_size = len(self.example_buffer) if self.example_buffer is not None else 0
         self.buffer_idx = 0
         
     @staticmethod
