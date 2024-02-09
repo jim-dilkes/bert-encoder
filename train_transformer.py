@@ -115,7 +115,7 @@ loss_idx = 0
 transformer = EncoderTransformer(vocab_size, sequence_length, n_layers, d_embedding, d_model, d_k, d_v, n_heads, d_ff, padding_idx).to(device)
 optimizer = optim.Adam(transformer.parameters())
 
-FLAG_LOAD_CHECKPOINT = True
+FLAG_LOAD_CHECKPOINT = False
 
 if not FLAG_LOAD_CHECKPOINT:
     data_ops.reset_directory(checkpoint_dir)
