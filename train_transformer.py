@@ -105,7 +105,7 @@ lr = 3e-4
 mask_probability = 0.15
 
 checkpoint_dir = 'checkpoints'
-checkpoint_every = 2
+checkpoint_every = 20
 max_checkpoints = 5
 checkpoint_name = 'epoch0_file4.pt'
 
