@@ -43,7 +43,7 @@ i=0
 while dataset:
     filename = f'wikipedia_{int(n_sample/1000)}K_{str(i)}.txt'
     print(f'Writing {filename}')
-    with open(f"{output_dir}\\{filename}", 'w', encoding='utf-8') as f:
+    with open(os.path.join(output_dir, filename), 'w', encoding='utf-8') as f:
         for item in dataset[:n_shard]:
             item = item.replace('\n', ' ')
             doc = nlp(item)

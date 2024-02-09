@@ -61,7 +61,7 @@ def load_checkpoint(checkpoint_name, checkpoint_dir, transformer, optimizer):
             transformer (nn.Module): The model to load the checkpoint into
             optimizer (torch.optim): The optimizer to load the checkpoint into
     """
-    checkpoint = torch.load(f"{checkpoint_dir}\\{checkpoint_name}")
+    checkpoint = torch.load(os.path.join(checkpoint_dir, checkpoint_name))
     transformer.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     return checkpoint['epoch'], checkpoint['start_file_idx'], checkpoint['ordered_filepaths']
@@ -70,7 +70,7 @@ def load_checkpoint(checkpoint_name, checkpoint_dir, transformer, optimizer):
 def write_loss(losses, loss_epoch_dir, loss_idx):
     if not os.path.exists(loss_epoch_dir):
         os.makedirs(loss_epoch_dir)
-    with open(f'{loss_epoch_dir}\\{loss_idx}.txt', 'w') as f:
+    with open(os.path.join(loss_epoch_dir, f'{loss_idx}.txt'), 'w') as f:
         # Write the losses from a list to one line per loss
         for batch_loss in losses:
             f.write(f"{batch_loss[0]},{batch_loss[1]}\n")
@@ -153,7 +153,7 @@ for epoch in range(n_epochs):
     for i, batch, file_idx in data_loader:
         # Checkpoint
         if file_idx % checkpoint_every == 0 and file_idx > checkpointed_files:
-            write_loss(checkpoint_losses, f"{loss_dir}\\{epoch}", loss_idx)
+            write_loss(checkpoint_losses, os.path.join(loss_dir, str(epoch)), loss_idx)
             loss_idx += 1
             save_checkpoint(transformer, optimizer, epoch, filepaths, file_idx,
                             checkpoint_dir, max_checkpoints=max_checkpoints)
@@ -182,7 +182,7 @@ for epoch in range(n_epochs):
 
 
 
-    write_loss(checkpoint_losses, f"{loss_dir}\\{epoch}", loss_idx)
+    write_loss(checkpoint_losses, os.path.join(loss_dir, str(epoch)), loss_idx)
     loss_idx += 1
     save_checkpoint(transformer, optimizer, epoch, filepaths, file_idx=0,
                     checkpoint_dir=checkpoint_dir, max_checkpoints=max_checkpoints)
