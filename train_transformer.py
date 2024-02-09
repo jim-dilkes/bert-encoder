@@ -34,7 +34,7 @@ def save_checkpoint(transformer, optimizer, epoch, filepaths, file_idx,
     print(f'Saving checkpoint for epoch {epoch}, beginning with file {file_idx}...')
 
     # Remove old checkpoints if there are too many
-    checkpoint_filepath = f'{checkpoint_dir}\\epoch{epoch}_file{file_idx}.pt'    
+    checkpoint_filepath = os.path.join(checkpoint_dir, f'epoch{epoch}_file{file_idx}.pt')
     checkpoint_files = data_ops.gather_files(checkpoint_dir, file_extension='.pt')
     while len(checkpoint_files) > max_checkpoints-1:
         checkpoint_files = sorted(checkpoint_files, key=lambda x: os.path.getctime(x))
