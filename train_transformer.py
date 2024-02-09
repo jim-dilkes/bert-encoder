@@ -31,7 +31,7 @@ def save_checkpoint(transformer, optimizer, epoch, filepaths, file_idx,
         max_checkpoints (int): The maximum number of checkpoints to keep
     """
     
-    print(f'\nSaving checkpoint for epoch {epoch}, beginning with file {file_idx}...')
+    print(f'Saving checkpoint for epoch {epoch}, beginning with file {file_idx}...')
 
     # Remove old checkpoints if there are too many
     checkpoint_filepath = f'{checkpoint_dir}\\epoch{epoch}_file{file_idx}.pt'    
@@ -138,14 +138,14 @@ else:
 
 print("Training transformer model:")
 print(transformer)
-print(f"\nNumber of parameters: {sum(p.numel() for p in transformer.parameters() if p.requires_grad)}\n")
+print(f"Number of parameters: {sum(p.numel() for p in transformer.parameters() if p.requires_grad)}\n")
 
 
 losses = []
 import time
 start = time.time()
 for epoch in range(n_epochs):
-    print(f"\nEpoch {epoch}/{n_epochs-1}")
+    print(f"Epoch {epoch}/{n_epochs-1}")
 
     # Load data
     data_loader = data_ops.DataLoader(filepaths, batch_size=batch_size, file_idx=file_idx, shuffle_contents=True, device=device)
@@ -158,7 +158,7 @@ for epoch in range(n_epochs):
             save_checkpoint(transformer, optimizer, epoch, filepaths, file_idx,
                             checkpoint_dir, max_checkpoints=max_checkpoints)
             elapsed = time.time()-start
-            print(f'\nTime Elapsed: {elapsed/60:.2f} | File {file_idx} ({(elapsed/(file_idx+1)):.2f}) | Mean Masked Likelihood: {loss*-1}')
+            print(f'Time Elapsed: {elapsed/60:.2f} | File {file_idx} ({(elapsed/(file_idx+1)):.2f}) | Mean Masked Likelihood: {loss*-1}')
             checkpoint_losses = []
             checkpointed_files += checkpoint_every
         optimizer.zero_grad()

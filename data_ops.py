@@ -126,7 +126,7 @@ class DataLoader():
                     data[torch.randperm(data.size(0))]
                 return data
         
-        print(f'Loading file {self.file_idx}/{self.n_files} | Done {self.example_counter} examples in {self.batch_counter} batches', end='\r')
+        print(f'Loading file {self.file_idx}/{self.n_files} | Done {self.example_counter} examples in {self.batch_counter} batches')
 
         data = _get_next_file_data()
         self.example_buffer, self.hanging_batch = self._prepare_batches(data, self.batch_size, self.hanging_batch)
