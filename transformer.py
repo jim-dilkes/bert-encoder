@@ -45,6 +45,7 @@ class Embedding(nn.Module):
         self.register_buffer('pe_matrix', generate_pe_matrix(embedding_dim=embedding_dim, n_input_tokens=n_input_tokens))
 
         self.linear_model_dim = nn.Linear(embedding_dim, model_dim)
+        nn.init.xavier_normal_(self.linear_model_dim.weight)
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
         assert x.dim() in [1,2]
@@ -73,11 +74,15 @@ class MultiHeadSelfAttention(nn.Module):
         self.n_heads = n_heads
     
         self.linear_m_qk = nn.Linear(self.model_dim, self.n_heads*self.k_dim*2)
+        nn.init.xavier_normal_(self.linear_m_qk.weight)
         self.linear_m_v = nn.Linear(self.model_dim, self.n_heads*self.v_dim)
+        nn.init.xavier_normal_(self.linear_m_v.weight)
+
 
         self.softmax_k = nn.Softmax(dim=3)
 
         self.linear_v_m = nn.Linear(self.n_heads*self.v_dim, self.model_dim)
+        nn.init.xavier_normal_(self.linear_v_m.weight)
 
         self.layer_norm = nn.LayerNorm([self.sequence_length,self.model_dim])
 
@@ -124,18 +129,22 @@ class FeedForward(nn.Module):
     Feed forward module for the encoder transformer model.
     model_dim -> ff_dim -> ReLU -> model_dim
     """
-    def __init__(self, model_dim:int, ff_dim:int):
+    def __init__(self, model_dim:int, ff_dim:int, drop_out_ratio:int=0):
         super().__init__()
 
         self.linear_1 = nn.Linear(model_dim, ff_dim)
+        nn.init.xavier_normal_(self.linear_1.weight)
         self.relu = nn.ReLU()
         self.linear_2 = nn.Linear(ff_dim, model_dim)
+        nn.init.xavier_normal_(self.linear_2.weight)
         self.layer_norm = nn.LayerNorm([model_dim])
+        self.dropout = nn.Dropout(drop_out_ratio)
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
         out = self.linear_1(x)
         out = self.relu(out)
         out = self.linear_2(out)
+        out = self.dropout(out)
         out = self.layer_norm(out + x)
         return out
 
@@ -143,7 +152,7 @@ class FeedForward(nn.Module):
 class EncoderTransformer(nn.Module):
     """Encoder transformer model."""
     def __init__(self, vocab_size:int, sequence_length:int, n_layers:int, embedding_dim:int, 
-                 model_dim:int, k_dim:int, v_dim:int, n_heads:int, ff_dim:int, padding_idx:int):
+                 model_dim:int, k_dim:int, v_dim:int, n_heads:int, ff_dim:int, padding_idx:int, drop_out_ratio:int=0):
         super().__init__()      
 
         ## Token and positional embedding layer
@@ -162,11 +171,12 @@ class EncoderTransformer(nn.Module):
                                                 k_dim=k_dim,
                                                 v_dim=v_dim)
                                                 ))
-            mhsa_modules.append((f'ff_{i}', FeedForward(model_dim=model_dim, ff_dim=ff_dim)))
+            mhsa_modules.append((f'ff_{i}', FeedForward(model_dim=model_dim, ff_dim=ff_dim, drop_out_ratio=drop_out_ratio)))
         self.mhsa = nn.Sequential(OrderedDict(mhsa_modules))
 
         ## Output layer - likelihood of each token at each position
         self.output = nn.Sequential(nn.Linear(model_dim, vocab_size),
+                                    nn.Dropout(drop_out_ratio),
                                     nn.Softmax(dim=2))
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:

@@ -86,6 +86,7 @@ d_embedding = 256
 d_model = 256
 d_ff = d_model * 4
 n_layers = 4
+dropout = 0.1
 
 # k and v dims per head
 d_k = 64
@@ -112,7 +113,7 @@ checkpoint_name = 'epoch0_file4.pt'
 loss_dir = 'losses'
 loss_idx = 0
 
-transformer = EncoderTransformer(vocab_size, sequence_length, n_layers, d_embedding, d_model, d_k, d_v, n_heads, d_ff, padding_idx).to(device)
+transformer = EncoderTransformer(vocab_size, sequence_length, n_layers, d_embedding, d_model, d_k, d_v, n_heads, d_ff, padding_idx, dropout).to(device)
 optimizer = optim.Adam(transformer.parameters())
 
 FLAG_LOAD_CHECKPOINT = False
