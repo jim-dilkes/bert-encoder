@@ -129,7 +129,7 @@ class FeedForward(nn.Module):
     Feed forward module for the encoder transformer model.
     model_dim -> ff_dim -> ReLU -> model_dim
     """
-    def __init__(self, model_dim:int, ff_dim:int, drop_out_ratio:int=0):
+    def __init__(self, model_dim:int, ff_dim:int, dropout_ratio:int=0):
         super().__init__()
 
         self.linear_1 = nn.Linear(model_dim, ff_dim)
@@ -138,7 +138,7 @@ class FeedForward(nn.Module):
         self.linear_2 = nn.Linear(ff_dim, model_dim)
         nn.init.xavier_normal_(self.linear_2.weight)
         self.layer_norm = nn.LayerNorm([model_dim])
-        self.dropout = nn.Dropout(drop_out_ratio)
+        self.dropout = nn.Dropout(dropout_ratio)
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
         out = self.linear_1(x)
@@ -152,7 +152,7 @@ class FeedForward(nn.Module):
 class EncoderTransformer(nn.Module):
     """Encoder transformer model."""
     def __init__(self, vocab_size:int, sequence_length:int, n_layers:int, embedding_dim:int, 
-                 model_dim:int, k_dim:int, v_dim:int, n_heads:int, ff_dim:int, padding_idx:int, drop_out_ratio:int=0):
+                 model_dim:int, k_dim:int, v_dim:int, n_heads:int, ff_dim:int, padding_idx:int, dropout_ratio:int=0):
         super().__init__()      
 
         ## Token and positional embedding layer
@@ -171,12 +171,12 @@ class EncoderTransformer(nn.Module):
                                                 k_dim=k_dim,
                                                 v_dim=v_dim)
                                                 ))
-            mhsa_modules.append((f'ff_{i}', FeedForward(model_dim=model_dim, ff_dim=ff_dim, drop_out_ratio=drop_out_ratio)))
+            mhsa_modules.append((f'ff_{i}', FeedForward(model_dim=model_dim, ff_dim=ff_dim, dropout_ratio=dropout_ratio)))
         self.mhsa = nn.Sequential(OrderedDict(mhsa_modules))
 
         ## Output layer - likelihood of each token at each position
         self.output = nn.Sequential(nn.Linear(model_dim, vocab_size),
-                                    nn.Dropout(drop_out_ratio),
+                                    nn.Dropout(dropout_ratio),
                                     nn.Softmax(dim=2))
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
