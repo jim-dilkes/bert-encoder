@@ -11,14 +11,12 @@ import os
 from datasets import load_dataset
 from spacy.lang.en import English
 
-output_dir = 'data_sent'
+output_dir = './.data/data_sent'
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 print("Loading Wikipedia dataset")
 dataset = load_dataset("wikipedia", "20220301.en", split="train", trust_remote_code=True)
-    
-dataset = dataset['text']
     
 nlp = English()
 nlp.add_pipe("sentencizer")
