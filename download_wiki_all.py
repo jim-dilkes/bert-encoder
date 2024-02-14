@@ -1,10 +1,5 @@
 """
 Download and preprocess Wikipedia dataset for training language models.
-Preprocessing includes:
-- Selecting a subset of the dataset
-- Shuffling the dataset
-- Splitting the dataset into smaller files
-- Splitting the dataset into sentences using spacy
 """
 
 import os
@@ -18,6 +13,7 @@ if not os.path.exists(output_dir):
 print("Loading Wikipedia dataset")
 dataset = load_dataset("wikipedia", "20220301.en", split="train", trust_remote_code=True)
     
+print("Loaded spacy sentencizer")
 nlp = English()
 nlp.add_pipe("sentencizer")
 
