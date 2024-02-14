@@ -1,3 +1,6 @@
-torch==2.1.1+cu121
+# torch==2.1.1+cu121
 numpy
 einops
+datasets
+tokenizers
+spacy
