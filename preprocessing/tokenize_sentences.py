@@ -1,17 +1,17 @@
-shard_size = 10000
-parent_dir = "data_sent"
-output_dir = "data_tokenized"
-
 import data_ops
 import os
 import torch
 
 from tokenizers import Tokenizer
 
+shard_size = 10000
+parent_dir = os.path.join(".", ".data", "data_sent")
+output_dir = os.path.join(".", ".data", "data_tokenized")
+
 # Get the file names
 file_names = os.listdir(parent_dir)
 # Create the output directory (delete if it already exists)
-data_ops.reset_directory(output_dir)
+# data_ops.reset_directory(output_dir)
 
 
 # Load the tokenizer
@@ -48,5 +48,9 @@ for i, file_name in enumerate(file_names):
         if len(shard) > 0:
             shard_tokenized = tokenize_sentences(shard)
             torch.save(shard_tokenized, os.path.join(output_dir, str(i), f"{j}.pt"))
+
+    
+    # Delete the original file
+    os.remove(os.path.join(parent_dir, file_name))    
 
     print(f"Tokenized {i+1}/{len(file_names)} files", end="\r")
