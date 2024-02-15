@@ -1,4 +1,4 @@
-import data_ops
+from ..src import data_ops
 import os
 import torch
 

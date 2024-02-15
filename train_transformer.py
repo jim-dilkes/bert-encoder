@@ -5,8 +5,8 @@ import torch
 import torch.optim as optim
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-import data_ops
-from transformer import EncoderTransformer
+from src import data_ops
+from src.transformer import EncoderTransformer
 
 import numpy as np
 
