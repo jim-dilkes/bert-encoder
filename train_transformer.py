@@ -22,18 +22,18 @@ def save_checkpoint(
     epoch,
     filepaths,
     file_idx,
+    metric_idx,
     checkpoint_dir,
     max_checkpoints=None,
 ):
     """Args:
     transformer (nn.Module): The model to save
-    optimiser (torch.optim): The optimizer to save
-    epoch (int): The current epoch
+    optimizer (torch.optim): The optimizer to save
+    epoch (int): The epoch number
     filepaths (list): The ordered list of filepaths
-    file_idx (int): The current file index
+    file_idx (int): The index of the file to start with
+    metric_idx (int): The index of the metric to start with
     checkpoint_dir (str): The directory to save the checkpoint
-    elapsed (float): The time elapsed since training began
-    loss (float): The mean masked likelihood
     max_checkpoints (int): The maximum number of checkpoints to keep
     """
 
@@ -58,7 +58,8 @@ def save_checkpoint(
     torch.save(
         {
             "epoch": epoch,
-            "start_file_idx": file_idx,  # +1 to start from the next file
+            "start_file_idx": file_idx,
+            "start_metric_idx": metric_idx,
             "ordered_filepaths": filepaths,
             "model_state_dict": transformer.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
@@ -87,6 +88,7 @@ def load_checkpoint(checkpoint_relpath, checkpoint_dir, transformer, optimizer):
     return (
         checkpoint["epoch"],
         checkpoint["start_file_idx"],
+        checkpoint["start_metric_idx"],
         checkpoint["ordered_filepaths"],
     )
 
@@ -95,9 +97,9 @@ def write_metric(metric, metric_epoch_dir, metric_idx):
     if not os.path.exists(metric_epoch_dir):
         os.makedirs(metric_epoch_dir)
     with open(os.path.join(metric_epoch_dir, f"{metric_idx}.txt"), "w") as f:
-        # Write the losses from a list to one line per loss
-        for batch_loss in metric:
-            f.write(f"{batch_loss[0]},{batch_loss[1]}\n")
+        # Write the metrics from a list to one line per metric
+        for batch_metric in metric:
+            f.write(f"{batch_metric[0]},{batch_metric[1]}\n")
     return
 
 
@@ -139,13 +141,13 @@ proportion_mask_token = 0.0
 proportion_random_token = 0.0
 
 # Checkpointing
-FLAG_LOAD_CHECKPOINT = False
+FLAG_LOAD_CHECKPOINT = True
 checkpoint_dir = ".checkpoints"
 checkpoint_epoch_dir = os.path.join(checkpoint_dir, "epoch")
 checkpoint_every = 20
 max_checkpoints = 5
 # checkpoint_relpath = "epoch0_file580.pt"
-checkpoint_relpath = "epoch\\epoch7_file0.pt"
+checkpoint_relpath = "epoch\\epoch6_file0.pt"
 
 metrics_dir = os.path.join(".metrics")
 llh_dir = os.path.join(metrics_dir, "llh_loss")
@@ -178,6 +180,7 @@ if not FLAG_LOAD_CHECKPOINT:
     start_epoch = 0
     file_idx = 0
     initial_file_idx = 0
+    initial_metric_idx = 0
 
     # Keep only the relative path from the data directory
     filepaths = data_ops.gather_files(data_dir, file_extension=".pt")
@@ -187,11 +190,12 @@ if not FLAG_LOAD_CHECKPOINT:
     checkpointed_files = 0
 else:
     optimizer = optim.Adam(transformer.parameters())
-    start_epoch, file_idx, rel_filepaths = load_checkpoint(
+    start_epoch, file_idx, metric_idx, rel_filepaths = load_checkpoint(
         checkpoint_relpath, checkpoint_dir, transformer, optimizer
     )
     initial_file_idx = file_idx
     checkpointed_files = file_idx
+    initial_metric_idx = metric_idx
     filepaths = [os.path.join(data_dir, f) for f in rel_filepaths]
 
 
@@ -202,7 +206,7 @@ print(
 )
 
 
-losses = []
+llh_losses = []
 import time
 
 start = time.time()
@@ -278,9 +282,10 @@ for epoch in range(start_epoch, n_epochs):
     save_checkpoint(
         transformer,
         optimizer,
-        epoch,
+        epoch + 1,
         rel_filepaths,
         file_idx=0,
+        metric_idx=metric_idx,
         checkpoint_dir=checkpoint_epoch_dir,
         max_checkpoints=max_checkpoints,
     )
