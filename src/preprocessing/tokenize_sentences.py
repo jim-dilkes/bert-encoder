@@ -4,6 +4,7 @@ import torch
 
 from tokenizers import Tokenizer
 
+
 shard_size = 10000
 parent_dir = os.path.join(".", ".data", "data_sent")
 output_dir = os.path.join(".", ".data", "data_tokenized")
@@ -11,7 +12,9 @@ output_dir = os.path.join(".", ".data", "data_tokenized")
 # Get the file names
 file_names = os.listdir(parent_dir)
 # Create the output directory (delete if it already exists)
-# data_ops.reset_directory(output_dir)
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+# data_ops.create_directory(output_dir)
 
 
 # Load the tokenizer
