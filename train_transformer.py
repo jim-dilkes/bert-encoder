@@ -15,11 +15,6 @@ import numpy as np
 # load tokenizer
 from tokenizers import Tokenizer
 
-tokenizer_filepath = ".tokenizers/tokenizer_64.json"
-tokenizer = Tokenizer.from_file(tokenizer_filepath)
-padding_idx = tokenizer.encode("[PAD]").ids[0]
-mask_idx = tokenizer.encode("[MASK]").ids[0]
-
 
 def save_checkpoint(
     transformer,
@@ -42,12 +37,12 @@ def save_checkpoint(
     max_checkpoints (int): The maximum number of checkpoints to keep
     """
 
-    print(f"Saving checkpoint for epoch {epoch}, beginning with file {file_idx}...")
-
-    # Remove old checkpoints if there are too many
     checkpoint_filepath = os.path.join(
         checkpoint_dir, f"epoch{epoch}_file{file_idx}.pt"
     )
+    print(f"Saving checkpoint for epoch {epoch}, beginning with file {file_idx} to {checkpoint_filepath}")
+
+    # Remove old checkpoints if there are too many
     checkpoint_files = data_ops.gather_files(checkpoint_dir, file_extension=".pt")
     if max_checkpoints is not None:
         while len(checkpoint_files) > max_checkpoints - 1:
@@ -69,8 +64,10 @@ def save_checkpoint(
         checkpoint_filepath,
     )
 
+    print(f"Checkpoint saved")
 
-def load_checkpoint(checkpoint_name, checkpoint_dir, transformer, optimizer):
+
+def load_checkpoint(checkpoint_relpath, checkpoint_dir, transformer, optimizer):
     """Load a checkpoint and return the epoch, file index, and ordered filepaths.
     Load model and optimizer in place, return the other values.
 
@@ -80,9 +77,9 @@ def load_checkpoint(checkpoint_name, checkpoint_dir, transformer, optimizer):
         transformer (nn.Module): The model to load the checkpoint into
         optimizer (torch.optim): The optimizer to load the checkpoint into
     """
-    if not os.path.exists(os.path.join(checkpoint_dir, checkpoint_name)):
-        raise FileNotFoundError(f"Checkpoint file {checkpoint_name} not found")
-    checkpoint = torch.load(os.path.join(checkpoint_dir, checkpoint_name))
+    if not os.path.exists(os.path.join(checkpoint_dir, checkpoint_relpath)):
+        raise FileNotFoundError(f"Checkpoint file {checkpoint_relpath} not found")
+    checkpoint = torch.load(os.path.join(checkpoint_dir, checkpoint_relpath))
     transformer.load_state_dict(checkpoint["model_state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     return (
@@ -101,41 +98,51 @@ def write_loss(losses, loss_epoch_dir, loss_idx):
             f.write(f"{batch_loss[0]},{batch_loss[1]}\n")
     return
 
-
-## Model Params
+### Define Parameters
+## Tokenizer
 vocab_size = 15000
-sequence_length = 64
+sequence_length = 128
+tokenizer_filepath = f".tokenizers/tok_SL{sequence_length}_V{vocab_size}.json"
+tokenizer = Tokenizer.from_file(tokenizer_filepath)
+padding_idx = tokenizer.encode("[PAD]").ids[0]
+mask_idx = tokenizer.encode("[MASK]").ids[0]
 
-# Model Parameters
-d_embedding = 512
-d_model = 512
+## Model 
+d_model = 256
+d_embedding = d_model
 d_ff = d_model * 4
-n_layers = 8
+n_layers = 4
 dropout = 0.1
 
-# k and v dims per head
-d_k = 64
+d_k = 64 # k and v dims per head
 d_v = d_k
 n_heads = d_model / d_k
 if n_heads != int(n_heads):
     raise ValueError("d_model must be divisible by d_k")
 n_heads = int(n_heads)
 
+## Training
+# data_dir = "D:\\\\data\\embedded_text\\wikipedia_vocab64_seqlen15k"
+data_dir = ".data\\tokenized_test_128"
+batch_size = 64
+n_epochs = 200
+lr = 1e-4
 
-## Training Params
-data_dir = "D:\\\\data\\embedded_text\\wikipedia_vocab64_seqlen15k"
-batch_size = 128
-n_epochs = 6
-lr = 3e-4
-
+## Masking
 mask_probability = 0.15
+# proportion_mask_token = 0.8
+# proportion_random_token = 0.1
+proportion_mask_token = 0.0
+proportion_random_token = 0.0
 
-FLAG_LOAD_CHECKPOINT = True
+# Checkpointing
+FLAG_LOAD_CHECKPOINT = False
 checkpoint_dir = ".checkpoints"
 checkpoint_epoch_dir = os.path.join(checkpoint_dir, "epoch")
-checkpoint_every = 10
+checkpoint_every = 20
 max_checkpoints = 5
-checkpoint_name = "epoch0_file580.pt"
+# checkpoint_relpath = "epoch0_file580.pt"
+checkpoint_relpath = "epoch\\epoch7_file0.pt"
 
 loss_dir = os.path.join(".metrics", "llh_loss")
 loss_idx = 0
@@ -157,9 +164,9 @@ optimizer = optim.Adam(transformer.parameters())
 
 
 if not FLAG_LOAD_CHECKPOINT:
-    data_ops.create_directory(checkpoint_dir)
-    data_ops.create_directory(checkpoint_epoch_dir)
-    data_ops.create_directory(loss_dir)
+    data_ops.create_directory(checkpoint_dir, reset=True)
+    data_ops.create_directory(checkpoint_epoch_dir, reset=True)
+    data_ops.create_directory(loss_dir, reset=True)
 
     optimizer = optim.Adam(transformer.parameters(), lr=lr)
 
@@ -176,7 +183,7 @@ if not FLAG_LOAD_CHECKPOINT:
 else:
     optimizer = optim.Adam(transformer.parameters())
     start_epoch, file_idx, rel_filepaths = load_checkpoint(
-        checkpoint_name, checkpoint_dir, transformer, optimizer
+        checkpoint_relpath, checkpoint_dir, transformer, optimizer
     )
     initial_file_idx = file_idx
     checkpointed_files = file_idx
@@ -195,7 +202,7 @@ import time
 
 start = time.time()
 checkpoint_start = time.time()
-for epoch in range(n_epochs):
+for epoch in range(start_epoch, n_epochs):
     print(f"Epoch {epoch}/{n_epochs-1}")
 
     # Load data
@@ -223,10 +230,9 @@ for epoch in range(n_epochs):
             )
             elapsed = time.time() - start
             checkpoint_elapsed = time.time() - checkpoint_start
-            mean_llh_str = f"{np.mean([x[1] for x in checkpoint_losses])}:.2f"
+            mean_llh_str = np.mean([x[1] for x in checkpoint_losses])
             print(
-                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {mean_llh_str}"
-            )
+                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_llh_str):.5f} ({math.exp(-1*float(mean_llh_str)):.2f})"            )
             checkpoint_start = time.time()
             checkpoint_losses = []
             checkpointed_files += checkpoint_every
@@ -239,6 +245,8 @@ for epoch in range(n_epochs):
             pad_id=padding_idx,
             mask_prob=mask_probability,
             vocab_low_high=(5, vocab_size),
+            proportion_mask_token=proportion_mask_token,
+            proportion_random_token=proportion_random_token
         )
 
         # Forward pass
@@ -266,7 +274,13 @@ for epoch in range(n_epochs):
         rel_filepaths,
         file_idx=0,
         checkpoint_dir=checkpoint_epoch_dir,
-        max_checkpoints=None,
+        max_checkpoints=max_checkpoints,
     )
+    
+    elapsed = time.time() - start
+    checkpoint_elapsed = time.time() - checkpoint_start
+    mean_llh_str = np.mean([x[1] for x in checkpoint_losses])
+    print(
+        f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_llh_str):.5f} ({math.exp(-1*float(mean_llh_str)):.2f})"            )
 
     checkpointed_files = 0
