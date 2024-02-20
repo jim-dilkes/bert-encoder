@@ -123,7 +123,7 @@ n_heads = int(n_heads)
 
 
 ## Training Params
-data_dir = ".data/tokenized_64"
+data_dir = "D:\\\\data\\embedded_text\\wikipedia_vocab64_seqlen15k"
 batch_size = 128
 n_epochs = 6
 lr = 3e-4
@@ -135,7 +135,7 @@ checkpoint_dir = ".checkpoints"
 checkpoint_epoch_dir = os.path.join(checkpoint_dir, "epoch")
 checkpoint_every = 10
 max_checkpoints = 5
-checkpoint_name = "epoch0_file540.pt"
+checkpoint_name = "epoch0_file580.pt"
 
 loss_dir = os.path.join(".metrics", "llh_loss")
 loss_idx = 0
@@ -166,17 +166,20 @@ if not FLAG_LOAD_CHECKPOINT:
     start_epoch = 0
     file_idx = 0
 
+    # Keep only the relative path from the data directory
     filepaths = data_ops.gather_files(data_dir, file_extension=".pt")
     np.random.shuffle(filepaths)
+    rel_filepaths = [os.path.relpath(f, data_dir) for f in filepaths]
 
     checkpointed_files = 0
 else:
     optimizer = optim.Adam(transformer.parameters())
-    start_epoch, file_idx, filepaths = load_checkpoint(
+    start_epoch, file_idx, rel_filepaths = load_checkpoint(
         checkpoint_name, checkpoint_dir, transformer, optimizer
     )
     initial_file_idx = file_idx
     checkpointed_files = file_idx
+    filepaths = [os.path.join(data_dir, f) for f in rel_filepaths]
 
 
 print("Training transformer model:")
@@ -212,7 +215,7 @@ for epoch in range(n_epochs):
                 transformer,
                 optimizer,
                 epoch,
-                filepaths,
+                rel_filepaths,
                 file_idx,
                 checkpoint_dir,
                 max_checkpoints=max_checkpoints,
@@ -259,7 +262,7 @@ for epoch in range(n_epochs):
         transformer,
         optimizer,
         epoch,
-        filepaths,
+        rel_filepaths,
         file_idx=0,
         checkpoint_dir=checkpoint_epoch_dir,
         max_checkpoints=None,
