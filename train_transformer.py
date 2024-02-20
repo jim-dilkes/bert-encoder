@@ -165,6 +165,7 @@ if not FLAG_LOAD_CHECKPOINT:
 
     start_epoch = 0
     file_idx = 0
+    initial_file_idx = 0
 
     # Keep only the relative path from the data directory
     filepaths = data_ops.gather_files(data_dir, file_extension=".pt")
