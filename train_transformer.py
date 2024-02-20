@@ -91,12 +91,12 @@ def load_checkpoint(checkpoint_relpath, checkpoint_dir, transformer, optimizer):
     )
 
 
-def write_loss(losses, loss_epoch_dir, loss_idx):
-    if not os.path.exists(loss_epoch_dir):
-        os.makedirs(loss_epoch_dir)
-    with open(os.path.join(loss_epoch_dir, f"{loss_idx}.txt"), "w") as f:
+def write_metric(metric, metric_epoch_dir, metric_idx):
+    if not os.path.exists(metric_epoch_dir):
+        os.makedirs(metric_epoch_dir)
+    with open(os.path.join(metric_epoch_dir, f"{metric_idx}.txt"), "w") as f:
         # Write the losses from a list to one line per loss
-        for batch_loss in losses:
+        for batch_loss in metric:
             f.write(f"{batch_loss[0]},{batch_loss[1]}\n")
     return
 
@@ -147,8 +147,9 @@ max_checkpoints = 5
 # checkpoint_relpath = "epoch0_file580.pt"
 checkpoint_relpath = "epoch\\epoch7_file0.pt"
 
-loss_dir = os.path.join(".metrics", "llh_loss")
-loss_idx = 0
+metrics_dir = os.path.join(".metrics")
+llh_dir = os.path.join(metrics_dir, "llh_loss")
+metric_idx = 0
 
 transformer = EncoderTransformer(
     vocab_size,
@@ -169,7 +170,8 @@ optimizer = optim.Adam(transformer.parameters())
 if not FLAG_LOAD_CHECKPOINT:
     data_ops.create_directory(checkpoint_dir, reset=True)
     data_ops.create_directory(checkpoint_epoch_dir, reset=True)
-    data_ops.create_directory(loss_dir, reset=True)
+    data_ops.create_directory(metrics_dir, reset=True)
+    data_ops.create_directory(llh_dir, reset=True)
 
     optimizer = optim.Adam(transformer.parameters(), lr=lr)
 
@@ -220,8 +222,10 @@ for epoch in range(start_epoch, n_epochs):
     for i, batch, file_idx in data_loader:
         # Checkpoint
         if file_idx % checkpoint_every == 0 and file_idx > checkpointed_files:
-            write_loss(checkpoint_losses, os.path.join(loss_dir, str(epoch)), loss_idx)
-            loss_idx += 1
+            write_metric(
+                checkpoint_losses, os.path.join(metrics_dir, str(epoch)), metric_idx
+            )
+            metric_idx += 1
             save_checkpoint(
                 transformer,
                 optimizer,
@@ -269,8 +273,8 @@ for epoch in range(start_epoch, n_epochs):
         optimizer.step()
         checkpoint_losses.append((i, loss.item()))
 
-    write_loss(checkpoint_losses, os.path.join(loss_dir, str(epoch)), loss_idx)
-    loss_idx += 1
+    write_metric(checkpoint_losses, os.path.join(metrics_dir, str(epoch)), metric_idx)
+    metric_idx += 1
     save_checkpoint(
         transformer,
         optimizer,
