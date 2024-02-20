@@ -222,9 +222,9 @@ for epoch in range(n_epochs):
             )
             elapsed = time.time() - start
             checkpoint_elapsed = time.time() - checkpoint_start
-            mean_llh = np.mean([x[1] for x in checkpoint_losses])
+            mean_llh_str = f"{np.mean([x[1] for x in checkpoint_losses])}:.2f"
             print(
-                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {mean_llh}"
+                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {mean_llh_str}"
             )
             checkpoint_start = time.time()
             checkpoint_losses = []
