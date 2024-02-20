@@ -37,6 +37,8 @@ def mask_tokens(
     pad_id: int,
     mask_prob: float = 0.1,
     vocab_low_high: tuple[int, int] = (5, 15000),
+    proportion_mask_token: float = 0.8,
+    proportion_random_token: float = 0.1
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Mask random tokens in a batch of input data."""
 
@@ -52,16 +54,16 @@ def mask_tokens(
     ## Replace selected tokens
     masked_input_batch = input_batch.clone()
 
-    # 0.8 replace masked input tokens with mask_id
+    # replace masked input tokens with mask_id
     replaced_tokens_bool = (
-        torch.bernoulli(torch.full(input_batch.shape, 0.8, device=use_device)).bool()
+        torch.bernoulli(torch.full(input_batch.shape, proportion_mask_token, device=use_device)).bool()
         & masked_tokens_bool
     )
     masked_input_batch.masked_fill_(replaced_tokens_bool, mask_id)
 
-    # 0.1 replace masked input tokens with random word
+    # replace masked input tokens with random word
     random_tokens_bool = (
-        torch.bernoulli(torch.full(input_batch.shape, 0.5, device=use_device)).bool()
+        torch.bernoulli(torch.full(input_batch.shape, proportion_random_token / (1-proportion_mask_token), device=use_device)).bool()
         & masked_tokens_bool
         & ~replaced_tokens_bool
     )
