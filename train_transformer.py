@@ -40,7 +40,9 @@ def save_checkpoint(
     checkpoint_filepath = os.path.join(
         checkpoint_dir, f"epoch{epoch}_file{file_idx}.pt"
     )
-    print(f"Saving checkpoint for epoch {epoch}, beginning with file {file_idx} to {checkpoint_filepath}")
+    print(
+        f"Saving checkpoint for epoch {epoch}, beginning with file {file_idx} to {checkpoint_filepath}"
+    )
 
     # Remove old checkpoints if there are too many
     checkpoint_files = data_ops.gather_files(checkpoint_dir, file_extension=".pt")
@@ -98,6 +100,7 @@ def write_loss(losses, loss_epoch_dir, loss_idx):
             f.write(f"{batch_loss[0]},{batch_loss[1]}\n")
     return
 
+
 ### Define Parameters
 ## Tokenizer
 vocab_size = 15000
@@ -107,14 +110,14 @@ tokenizer = Tokenizer.from_file(tokenizer_filepath)
 padding_idx = tokenizer.encode("[PAD]").ids[0]
 mask_idx = tokenizer.encode("[MASK]").ids[0]
 
-## Model 
+## Model
 d_model = 256
 d_embedding = d_model
 d_ff = d_model * 4
 n_layers = 4
 dropout = 0.1
 
-d_k = 64 # k and v dims per head
+d_k = 64  # k and v dims per head
 d_v = d_k
 n_heads = d_model / d_k
 if n_heads != int(n_heads):
@@ -126,7 +129,7 @@ n_heads = int(n_heads)
 data_dir = ".data\\tokenized_test_128"
 batch_size = 64
 n_epochs = 200
-lr = 1e-4
+lr = 1e-5
 
 ## Masking
 mask_probability = 0.15
@@ -232,7 +235,8 @@ for epoch in range(start_epoch, n_epochs):
             checkpoint_elapsed = time.time() - checkpoint_start
             mean_llh_str = np.mean([x[1] for x in checkpoint_losses])
             print(
-                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_llh_str):.5f} ({math.exp(-1*float(mean_llh_str)):.2f})"            )
+                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_llh_str):.5f} ({math.exp(-1*float(mean_llh_str)):.2f})"
+            )
             checkpoint_start = time.time()
             checkpoint_losses = []
             checkpointed_files += checkpoint_every
@@ -246,7 +250,7 @@ for epoch in range(start_epoch, n_epochs):
             mask_prob=mask_probability,
             vocab_low_high=(5, vocab_size),
             proportion_mask_token=proportion_mask_token,
-            proportion_random_token=proportion_random_token
+            proportion_random_token=proportion_random_token,
         )
 
         # Forward pass
@@ -276,11 +280,12 @@ for epoch in range(start_epoch, n_epochs):
         checkpoint_dir=checkpoint_epoch_dir,
         max_checkpoints=max_checkpoints,
     )
-    
+
     elapsed = time.time() - start
     checkpoint_elapsed = time.time() - checkpoint_start
     mean_llh_str = np.mean([x[1] for x in checkpoint_losses])
     print(
-        f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_llh_str):.5f} ({math.exp(-1*float(mean_llh_str)):.2f})"            )
+        f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_llh_str):.5f} ({math.exp(-1*float(mean_llh_str)):.2f})"
+    )
 
     checkpointed_files = 0
