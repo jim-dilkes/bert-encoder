@@ -4,3 +4,4 @@
 .metrics
 .vscode
 __pycache__
+wandb/

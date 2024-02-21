@@ -1,4 +1,3 @@
-import math
 import os
 import time
 import torch
@@ -11,6 +10,8 @@ from src.transformer import EncoderTransformer
 # load tokenizer
 from tokenizers import Tokenizer
 
+import wandb
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
@@ -21,7 +22,6 @@ def save_checkpoint(
     epoch,
     filepaths,
     file_idx,
-    metric_idx,
     checkpoint_dir,
     max_checkpoints=None,
 ):
@@ -31,7 +31,6 @@ def save_checkpoint(
     epoch (int): The epoch number
     filepaths (list): The ordered list of filepaths
     file_idx (int): The index of the file to start with
-    metric_idx (int): The index of the metric to start with
     checkpoint_dir (str): The directory to save the checkpoint
     max_checkpoints (int): The maximum number of checkpoints to keep
     """
@@ -58,7 +57,6 @@ def save_checkpoint(
         {
             "epoch": epoch,
             "start_file_idx": file_idx,
-            "start_metric_idx": metric_idx,
             "ordered_filepaths": filepaths,
             "model_state_dict": transformer.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
@@ -87,19 +85,8 @@ def load_checkpoint(checkpoint_relpath, checkpoint_dir, transformer, optimizer):
     return (
         checkpoint["epoch"],
         checkpoint["start_file_idx"],
-        checkpoint["start_metric_idx"],
         checkpoint["ordered_filepaths"],
     )
-
-
-def write_metric(metric, metric_epoch_dir, metric_idx):
-    if not os.path.exists(metric_epoch_dir):
-        os.makedirs(metric_epoch_dir)
-    with open(os.path.join(metric_epoch_dir, f"{metric_idx}.txt"), "w") as f:
-        # Write the metrics from a list to one line per metric
-        for batch_metric in metric:
-            f.write(f"{batch_metric[0]},{batch_metric[1]}\n")
-    return
 
 
 ### Define Parameters
@@ -148,10 +135,6 @@ max_checkpoints = 5
 # checkpoint_relpath = "epoch0_file580.pt"
 checkpoint_relpath = "epoch\\epoch6_file0.pt"
 
-metrics_dir = os.path.join(".metrics")
-xentropy_dir = os.path.join(metrics_dir, "xentropy_loss")
-metric_idx = 0
-
 transformer = EncoderTransformer(
     vocab_size,
     sequence_length,
@@ -171,15 +154,12 @@ optimizer = optim.Adam(transformer.parameters())
 if not FLAG_LOAD_CHECKPOINT:
     data_ops.create_directory(checkpoint_dir, reset=True)
     data_ops.create_directory(checkpoint_epoch_dir, reset=True)
-    data_ops.create_directory(metrics_dir, reset=True)
-    data_ops.create_directory(xentropy_dir, reset=True)
 
     optimizer = optim.Adam(transformer.parameters(), lr=lr)
 
     start_epoch = 0
     file_idx = 0
     initial_file_idx = 0
-    initial_metric_idx = 0
 
     # Keep only the relative path from the data directory
     filepaths = data_ops.gather_files(data_dir, file_extension=".pt")
@@ -189,14 +169,37 @@ if not FLAG_LOAD_CHECKPOINT:
     checkpointed_files = 0
 else:
     optimizer = optim.Adam(transformer.parameters())
-    start_epoch, file_idx, metric_idx, rel_filepaths = load_checkpoint(
+    start_epoch, file_idx, rel_filepaths = load_checkpoint(
         checkpoint_relpath, checkpoint_dir, transformer, optimizer
     )
     initial_file_idx = file_idx
     checkpointed_files = file_idx
-    initial_metric_idx = metric_idx
     filepaths = [os.path.join(data_dir, f) for f in rel_filepaths]
 
+
+wandb.init(
+    project="transformer-encoder",
+    config={
+        "dataset": data_dir,
+        "tokenizer": tokenizer_filepath,
+        "vocab_size": vocab_size,
+        "sequence_length": sequence_length,
+        "model_dimension": d_model,
+        "embedding_dimension": d_embedding,
+        "feedforward_dimension": d_ff,
+        "num_layers": n_layers,
+        "dropout_rate": dropout,
+        "k_dimension": d_k,
+        "v_dimension": d_v,
+        "num_heads": n_heads,
+        "batch_size": batch_size,
+        "num_epochs": n_epochs,
+        "learning_rate": lr,
+        "mask_probability": mask_probability,
+        "proportion_mask_token": proportion_mask_token,
+        "proportion_random_token": proportion_random_token,
+    },
+)
 
 print("Training transformer model:")
 print(transformer)
@@ -224,10 +227,6 @@ for epoch in range(start_epoch, n_epochs):
     for i, batch, file_idx in data_loader:
         # Checkpoint
         if file_idx % checkpoint_every == 0 and file_idx > checkpointed_files:
-            write_metric(
-                checkpoint_losses, os.path.join(xentropy_dir, str(epoch)), metric_idx
-            )
-            metric_idx += 1
             save_checkpoint(
                 transformer,
                 optimizer,
@@ -240,6 +239,13 @@ for epoch in range(start_epoch, n_epochs):
             elapsed = time.time() - start
             checkpoint_elapsed = time.time() - checkpoint_start
             mean_mean_xe = np.mean([x[1] for x in checkpoint_losses])
+            wandb.log(
+                {
+                    "epoch": epoch,
+                    "file_idx": file_idx - 1,
+                    "cross_entropy": mean_mean_xe,
+                }
+            )
             print(
                 f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Cross-Entropy: {(mean_mean_xe):.5f}"
             )
@@ -281,15 +287,12 @@ for epoch in range(start_epoch, n_epochs):
         optimizer.step()
         checkpoint_losses.append((i, loss.item()))
 
-    write_metric(checkpoint_losses, os.path.join(xentropy_dir, str(epoch)), metric_idx)
-    metric_idx += 1
     save_checkpoint(
         transformer,
         optimizer,
         epoch + 1,
         rel_filepaths,
         file_idx=0,
-        metric_idx=metric_idx,
         checkpoint_dir=checkpoint_epoch_dir,
         max_checkpoints=max_checkpoints,
     )
@@ -297,6 +300,7 @@ for epoch in range(start_epoch, n_epochs):
     elapsed = time.time() - start
     checkpoint_elapsed = time.time() - checkpoint_start
     mean_mean_xe = np.mean([x[1] for x in checkpoint_losses])
+    wandb.log({"epoch": epoch, "file_idx": file_idx, "cross_entropy": mean_mean_xe})
     print(
         f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Cross-Entropy: {(mean_mean_xe):.5f}"
     )
