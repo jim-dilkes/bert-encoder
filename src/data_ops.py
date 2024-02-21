@@ -38,7 +38,7 @@ def mask_tokens(
     mask_prob: float = 0.1,
     vocab_low_high: tuple[int, int] = (5, 15000),
     proportion_mask_token: float = 0.8,
-    proportion_random_token: float = 0.1
+    proportion_random_token: float = 0.1,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Mask random tokens in a batch of input data."""
 
@@ -56,14 +56,22 @@ def mask_tokens(
 
     # replace masked input tokens with mask_id
     replaced_tokens_bool = (
-        torch.bernoulli(torch.full(input_batch.shape, proportion_mask_token, device=use_device)).bool()
+        torch.bernoulli(
+            torch.full(input_batch.shape, proportion_mask_token, device=use_device)
+        ).bool()
         & masked_tokens_bool
     )
     masked_input_batch.masked_fill_(replaced_tokens_bool, mask_id)
 
     # replace masked input tokens with random word
     random_tokens_bool = (
-        torch.bernoulli(torch.full(input_batch.shape, proportion_random_token / (1-proportion_mask_token), device=use_device)).bool()
+        torch.bernoulli(
+            torch.full(
+                input_batch.shape,
+                proportion_random_token / (1 - proportion_mask_token),
+                device=use_device,
+            )
+        ).bool()
         & masked_tokens_bool
         & ~replaced_tokens_bool
     )
@@ -139,9 +147,11 @@ class DataLoader:
 
         if self.example_buffer is None:
             if self.hanging_batch is not None:
-                final_batch = self.hanging_batch
+                batch = self.hanging_batch
                 self.hanging_batch = None
-                return final_batch
+                self.batch_counter += 1
+                self.example_counter += len(batch)
+                return self.batch_counter, batch, self.file_idx
             self.file_idx = None  # Reset file_idx to None
             raise StopIteration
 
@@ -162,6 +172,7 @@ class DataLoader:
                     data = torch.cat(data, dim=0)
                 if self.shuffle_contents:
                     data[torch.randperm(data.size(0))]
+                print(f"Loaded file {file_path} | {len(data)} examples")
                 return data
 
         print(
@@ -190,9 +201,16 @@ class DataLoader:
             else:
                 data = torch.cat([hanging_batch, data], dim=0)
         n_batches = len(data) // batch_size
+
+        # Extract hanging batch
         hanging_batch = data[n_batches * batch_size :]
         if len(hanging_batch) == 0:
             hanging_batch = None
+
+        # Rearrange remaining data into batches
         data = data[: n_batches * batch_size]
         data = rearrange(data, "(n b) s -> n b s", b=batch_size)
+        if len(data) == 0:
+            data = None
+
         return data, hanging_batch
