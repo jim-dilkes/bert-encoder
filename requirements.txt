@@ -6,3 +6,4 @@ tokenizers
 spacy
 matplotlib
 pandas
+wandb
