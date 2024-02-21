@@ -141,7 +141,7 @@ proportion_mask_token = 0.0
 proportion_random_token = 0.0
 
 # Checkpointing
-FLAG_LOAD_CHECKPOINT = True
+FLAG_LOAD_CHECKPOINT = False
 checkpoint_dir = ".checkpoints"
 checkpoint_epoch_dir = os.path.join(checkpoint_dir, "epoch")
 checkpoint_every = 20
@@ -150,7 +150,7 @@ max_checkpoints = 5
 checkpoint_relpath = "epoch\\epoch6_file0.pt"
 
 metrics_dir = os.path.join(".metrics")
-llh_dir = os.path.join(metrics_dir, "llh_loss")
+xentropy_dir = os.path.join(metrics_dir, "xentropy_loss")
 metric_idx = 0
 
 transformer = EncoderTransformer(
@@ -173,7 +173,7 @@ if not FLAG_LOAD_CHECKPOINT:
     data_ops.create_directory(checkpoint_dir, reset=True)
     data_ops.create_directory(checkpoint_epoch_dir, reset=True)
     data_ops.create_directory(metrics_dir, reset=True)
-    data_ops.create_directory(llh_dir, reset=True)
+    data_ops.create_directory(xentropy_dir, reset=True)
 
     optimizer = optim.Adam(transformer.parameters(), lr=lr)
 
@@ -206,8 +206,7 @@ print(
 )
 
 
-llh_losses = []
-import time
+xe_losses = []
 
 start = time.time()
 checkpoint_start = time.time()
@@ -227,7 +226,7 @@ for epoch in range(start_epoch, n_epochs):
         # Checkpoint
         if file_idx % checkpoint_every == 0 and file_idx > checkpointed_files:
             write_metric(
-                checkpoint_losses, os.path.join(metrics_dir, str(epoch)), metric_idx
+                checkpoint_losses, os.path.join(xentropy_dir, str(epoch)), metric_idx
             )
             metric_idx += 1
             save_checkpoint(
@@ -241,9 +240,9 @@ for epoch in range(start_epoch, n_epochs):
             )
             elapsed = time.time() - start
             checkpoint_elapsed = time.time() - checkpoint_start
-            mean_llh_str = np.mean([x[1] for x in checkpoint_losses])
+            mean_mean_xe = np.mean([x[1] for x in checkpoint_losses])
             print(
-                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_llh_str):.5f} ({math.exp(-1*float(mean_llh_str)):.2f})"
+                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_mean_xe):.5f} ({math.exp(-1*float(mean_mean_xe)):.2f})"
             )
             checkpoint_start = time.time()
             checkpoint_losses = []
@@ -264,20 +263,26 @@ for epoch in range(start_epoch, n_epochs):
         # Forward pass
         all_token_likelihoods = transformer(masked_batch)  # output: b,s,voc
 
-        # Extract negative likelihoods of the masked tokens
-        ground_truth_likelihoods = all_token_likelihoods.gather(
-            -1, batch.unsqueeze(-1)
-        ).squeeze()
-        masked_ground_truth_likelihoods = ground_truth_likelihoods[masked_batch_bool]
-        log_likelihood = torch.neg(torch.log(masked_ground_truth_likelihoods))
+        # Calculate cross-entropy loss
+        masked_all_token_likelihoods = all_token_likelihoods[masked_batch_bool]
+        masked_actual_token_indices = batch[masked_batch_bool]
+        loss = torch.nn.functional.cross_entropy(
+            masked_all_token_likelihoods, masked_actual_token_indices, reduction="mean"
+        )
+
+        # Calculate negative log-likelihoods of the actual tokens
+        # actual_token_likelihoods = all_token_likelihoods.gather(-1, batch.unsqueeze(-1)).squeeze()
+        # masked_actual_token_likelihoods = actual_token_likelihoods[masked_batch_bool]
+        # log_likelihood = torch.neg(torch.log(masked_actual_token_likelihoods))
+        # loss = log_likelihood.mean()
 
         # Backward pass
-        loss = log_likelihood.mean()
+
         loss.backward()
         optimizer.step()
         checkpoint_losses.append((i, loss.item()))
 
-    write_metric(checkpoint_losses, os.path.join(metrics_dir, str(epoch)), metric_idx)
+    write_metric(checkpoint_losses, os.path.join(xentropy_dir, str(epoch)), metric_idx)
     metric_idx += 1
     save_checkpoint(
         transformer,
@@ -292,9 +297,9 @@ for epoch in range(start_epoch, n_epochs):
 
     elapsed = time.time() - start
     checkpoint_elapsed = time.time() - checkpoint_start
-    mean_llh_str = np.mean([x[1] for x in checkpoint_losses])
+    mean_mean_xe = np.mean([x[1] for x in checkpoint_losses])
     print(
-        f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_llh_str):.5f} ({math.exp(-1*float(mean_llh_str)):.2f})"
+        f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Masked Likelihood: {(-1*mean_mean_xe):.5f} ({math.exp(-1*float(mean_mean_xe)):.2f})"
     )
 
     checkpointed_files = 0
