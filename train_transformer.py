@@ -3,17 +3,16 @@ import os
 import time
 import torch
 import torch.optim as optim
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+import numpy as np
 
 from src import data_ops
 from src.transformer import EncoderTransformer
 
-import numpy as np
-
 # load tokenizer
 from tokenizers import Tokenizer
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 
 def save_checkpoint(
@@ -105,10 +104,10 @@ def write_metric(metric, metric_epoch_dir, metric_idx):
 
 ### Define Parameters
 ## Tokenizer
-vocab_size = 15000
-sequence_length = 128
-tokenizer_filepath = f".tokenizers/tok_SL{sequence_length}_V{vocab_size}.json"
+tokenizer_filepath = f".tokenizers/tok_SL128_V15000.json"
 tokenizer = Tokenizer.from_file(tokenizer_filepath)
+vocab_size = tokenizer.get_vocab_size()
+sequence_length = tokenizer.truncation["max_length"]
 padding_idx = tokenizer.encode("[PAD]").ids[0]
 mask_idx = tokenizer.encode("[MASK]").ids[0]
 
