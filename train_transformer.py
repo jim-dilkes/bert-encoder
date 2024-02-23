@@ -208,6 +208,9 @@ for epoch in range(start_epoch, n_epochs):
                 "epoch": epoch,
                 "batch_number": batch_counter,
                 "cross_entropy": loss.item(),
+                "log_likelihood": -loss_functions.negative_log_likelihood(
+                    all_token_likelihoods, masked_batch, masked_batch_bool
+                ),
             }
         )
 
