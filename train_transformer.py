@@ -91,6 +91,7 @@ def load_checkpoint(checkpoint_relpath, checkpoint_dir, transformer, optimizer):
 
 ### Define Parameters
 ## Tokenizer
+# tokenizer_filepath = f".tokenizers/tok_SL128_V15000.json"
 tokenizer_filepath = f".tokenizers/tok_SL128_V15000.json"
 tokenizer = Tokenizer.from_file(tokenizer_filepath)
 vocab_size = tokenizer.get_vocab_size()
@@ -99,10 +100,10 @@ padding_idx = tokenizer.encode("[PAD]").ids[0]
 mask_idx = tokenizer.encode("[MASK]").ids[0]
 
 ## Model
-d_model = 256
+d_model = 512
 d_embedding = d_model
 d_ff = d_model * 4
-n_layers = 4
+n_layers = 8
 dropout = 0.1
 
 d_k = 64  # k and v dims per head
@@ -113,27 +114,28 @@ if n_heads != int(n_heads):
 n_heads = int(n_heads)
 
 ## Training
-# data_dir = "D:\\\\data\\embedded_text\\wikipedia_vocab64_seqlen15k"
+# data_dir = "D://data/embedded_text/wikipedia_vocab64_seqlen15k"
 data_dir = ".data\\tokenized_test_128"
-batch_size = 64
-n_epochs = 200
-lr = 1e-5
+batch_size = 320
+n_epochs = 3
+lr = 2e-4
+weight_decay = 0.0
 
 ## Masking
 mask_probability = 0.15
-# proportion_mask_token = 0.8
-# proportion_random_token = 0.1
-proportion_mask_token = 0.0
-proportion_random_token = 0.0
+proportion_mask_token = 0.8
+proportion_random_token = 0.1
+# proportion_mask_token = 0.0
+# proportion_random_token = 0.0
 
 # Checkpointing
 FLAG_LOAD_CHECKPOINT = False
 checkpoint_dir = ".checkpoints"
 checkpoint_epoch_dir = os.path.join(checkpoint_dir, "epoch")
-checkpoint_every = 20
+checkpoint_every = 50
 max_checkpoints = 5
-# checkpoint_relpath = "epoch0_file580.pt"
-checkpoint_relpath = "epoch\\epoch6_file0.pt"
+checkpoint_relpath = "epoch0_file3400.pt"
+# checkpoint_relpath = "epoch/epoch6_file0.pt"
 
 transformer = EncoderTransformer(
     vocab_size,
@@ -148,14 +150,12 @@ transformer = EncoderTransformer(
     padding_idx,
     dropout,
 ).to(device)
-optimizer = optim.Adam(transformer.parameters())
-
 
 if not FLAG_LOAD_CHECKPOINT:
     data_ops.create_directory(checkpoint_dir, reset=True)
     data_ops.create_directory(checkpoint_epoch_dir, reset=True)
 
-    optimizer = optim.Adam(transformer.parameters(), lr=lr)
+    optimizer = optim.Adam(transformer.parameters(), lr=lr, weight_decay=weight_decay)
 
     start_epoch = 0
     file_idx = 0
@@ -223,7 +223,7 @@ for epoch in range(start_epoch, n_epochs):
         shuffle_contents=True,
         device=device,
     )
-    checkpoint_losses = []
+    checkpoint_xe = []
     for i, batch, file_idx in data_loader:
         # Checkpoint
         if file_idx % checkpoint_every == 0 and file_idx > checkpointed_files:
@@ -238,7 +238,7 @@ for epoch in range(start_epoch, n_epochs):
             )
             elapsed = time.time() - start
             checkpoint_elapsed = time.time() - checkpoint_start
-            mean_mean_xe = np.mean([x[1] for x in checkpoint_losses])
+            mean_mean_xe = np.mean([x[1] for x in checkpoint_xe])
             wandb.log(
                 {
                     "epoch": epoch,
@@ -247,10 +247,10 @@ for epoch in range(start_epoch, n_epochs):
                 }
             )
             print(
-                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Cross-Entropy: {(mean_mean_xe):.5f}"
+                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/len(checkpoint_xe):.2f}s/file) | Mean Cross-Entropy: {(mean_mean_xe):.5f}"
             )
             checkpoint_start = time.time()
-            checkpoint_losses = []
+            checkpoint_xe = []
             checkpointed_files += checkpoint_every
         optimizer.zero_grad()
 
@@ -285,7 +285,7 @@ for epoch in range(start_epoch, n_epochs):
 
         loss.backward()
         optimizer.step()
-        checkpoint_losses.append((i, loss.item()))
+        checkpoint_xe.append((i, loss.item()))
 
     save_checkpoint(
         transformer,
@@ -299,10 +299,11 @@ for epoch in range(start_epoch, n_epochs):
 
     elapsed = time.time() - start
     checkpoint_elapsed = time.time() - checkpoint_start
-    mean_mean_xe = np.mean([x[1] for x in checkpoint_losses])
+    mean_mean_xe = np.mean([x[1] for x in checkpoint_xe])
     wandb.log({"epoch": epoch, "file_idx": file_idx, "cross_entropy": mean_mean_xe})
     print(
-        f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Mean Cross-Entropy: {(mean_mean_xe):.5f}"
+        f"Total: {data_ops.seconds_to_ms(elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/len(checkpoint_xe):.2f}s/file) | Mean Cross-Entropy: {(mean_mean_xe):.5f}"
     )
 
+    file_idx = 0
     checkpointed_files = 0

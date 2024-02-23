@@ -1,7 +1,6 @@
 .archive
 .checkpoints
 .data
-.metrics
 .vscode
 __pycache__
 wandb/
