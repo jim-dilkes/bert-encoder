@@ -1,6 +1,7 @@
 import os
 import shutil
 import torch
+from numpy.random import default_rng
 from einops import rearrange
 
 
@@ -99,10 +100,12 @@ class DataLoader:
 
     def __init__(
         self,
-        filepaths: list[str],
-        batch_size: int,
-        file_idx: int | None = None,
+        root_directory: str,
+        batch_size: int = None,
+        find_files: bool = True,
+        shuffle_files: bool = True,
         shuffle_contents: bool = True,
+        random_seed: int = 0,
         device: str = "cpu",
     ):
         """Args:
@@ -113,32 +116,51 @@ class DataLoader:
         - device: device to load data onto
 
         """
-        self.filepaths = filepaths
+
         self.batch_size = batch_size
-        self.n_files = len(filepaths)
-
         self.shuffle_contents = shuffle_contents
-
+        self.rng = default_rng(random_seed)
         self.device = device
 
-        self.file_idx = file_idx if file_idx < self.n_files else None
-        self.batch_counter = 0
+        self.root_directory = root_directory
+        if find_files:
+            filepaths = gather_files(self.root_directory)
+            if shuffle_files:
+                self.rng.shuffle(filepaths)
+            self.relative_filepaths = [
+                os.path.relpath(f, self.root_directory) for f in filepaths
+            ]
+
+        self.first_iter = True
+        self._reset_state_variables()
 
     def __iter__(self):
-        # If DataLoader is initially set to a file_idx, start from that file
-        if self.file_idx is not None and self.batch_counter == 0:
-            self.file_idx = self.file_idx
-        # If DataLoader is reset part way through an epoch, start from 0
-        else:
-            self.file_idx = 0
+        if self.relative_filepaths is None:
+            raise ValueError(
+                "No filepaths have been set for the DataLoader, load a previous state or set new filepaths"
+            )
+        elif self.batch_size is None:
+            raise ValueError(
+                "No batch_size has been set for the DataLoader, set a batch_size"
+            )
 
-        self.batch_counter = 0
-        self.example_counter = 0
+        self.n_files = len(self.relative_filepaths)
 
+        if not self.first_iter:
+            self._reset_state_variables()
+        self.first_iter = False
+
+        self.this_file_batch_counter = 0
+        self.this_file_example_counter = 0
         self.hanging_batch = None
         self._load_next_buffer()
 
         return self
+
+    def _reset_state_variables(self):
+        self.file_idx = 0
+        self.batch_counter = 0
+        self.example_counter = 0
 
     def __next__(self):
         if self.buffer_idx >= self.buffer_size:
@@ -149,37 +171,47 @@ class DataLoader:
             if self.hanging_batch is not None:
                 batch = self.hanging_batch
                 self.hanging_batch = None
-                self.batch_counter += 1
-                self.example_counter += len(batch)
-                return self.batch_counter, batch, self.file_idx
+                self._update_counters(len(batch), 1)
+                return batch, self.batch_counter, self.file_idx
             self.file_idx = None  # Reset file_idx to None
+            self.this_file_example_counter = 0
             raise StopIteration
 
         batch = self.example_buffer[self.buffer_idx]
+        self._update_counters(len(batch), 1)
+        return batch, self.batch_counter, self.file_idx
+
+    def _update_counters(self, n_examples: int, n_batches: int):
+        self.example_counter += n_examples
+        self.this_file_example_counter += n_examples
+        self.batch_counter += n_batches
+        self.this_file_batch_counter += n_batches
         self.buffer_idx += 1
-        self.batch_counter += 1
-        self.example_counter += self.batch_size
-        return self.batch_counter, batch, self.file_idx
 
-    def _load_next_buffer(self) -> torch.Tensor | None:
-        def _get_next_file_data():
-            if self.file_idx >= self.n_files:
-                return None
-            else:
-                file_path = self.filepaths[self.file_idx]
-                data = torch.load(file_path, map_location=self.device)
-                if isinstance(data, list):
-                    data = torch.cat(data, dim=0)
-                if self.shuffle_contents:
-                    data[torch.randperm(data.size(0))]
-                print(f"Loaded file {file_path} | {len(data)} examples")
-                return data
+    def _load_next_buffer(self):
+        def _get_next_file_data() -> torch.Tensor | None:
+            file_path = os.path.join(
+                self.root_directory, self.relative_filepaths[self.file_idx]
+            )
+            data = torch.load(file_path, map_location=self.device)
+            if isinstance(data, list):
+                data = torch.cat(data, dim=0)
+            if self.shuffle_contents:
+                data[torch.randperm(data.size(0))]
+            print(f"Loaded file {file_path} | {len(data)} examples")
 
-        print(
-            f"Loading file {self.file_idx}/{self.n_files} | Done {self.example_counter} examples in {self.batch_counter} batches"
-        )
+            self.this_file_batch_counter = 0
+            self.this_file_example_counter = 0
+            return data
 
-        data = _get_next_file_data()
+        if self.file_idx >= self.n_files:
+            data = None  # Don't StopIteration yet, let the hanging batch be returned
+        else:
+            print(
+                f"Loading file number {self.file_idx+1}/{self.n_files} (idx {self.file_idx}) | Done {self.example_counter} examples in {self.batch_counter} batches"
+            )
+            data = _get_next_file_data()
+
         self.example_buffer, self.hanging_batch = self._prepare_batches(
             data, self.batch_size, self.hanging_batch
         )
@@ -214,3 +246,36 @@ class DataLoader:
             data = None
 
         return data, hanging_batch
+
+    def state_dict(self) -> dict:
+        """Return a dictionary containing the state variables of the DataLoader. Saves from the beginning of the current file."""
+        if self.this_file_example_counter > 0:
+            print(
+                f"Warning: state_dict() called part way through a file ({self.this_file_batch_counter} batches), saving from the beginning of the file."
+            )
+        state = {
+            "relative_filepaths": self.relative_filepaths,
+            "batch_size": self.batch_size,
+            "file_idx": self.file_idx,
+            "shuffle_contents": self.shuffle_contents,
+            "batch_counter": self.batch_counter - self.this_file_batch_counter,
+            "example_counter": self.example_counter - self.this_file_example_counter,
+        }
+        return state
+
+    def load_state_dict(self, state: dict):
+        """Load the state variables of the DataLoader from a dictionary."""
+        self.relative_filepaths = state["relative_filepaths"]
+        self.batch_size = state["batch_size"]
+        self.file_idx = state["file_idx"]
+        self.shuffle_contents = state["shuffle_contents"]
+        self.batch_counter = state["batch_counter"]
+        self.example_counter = state["example_counter"]
+
+        # Validate the filepaths
+        for f in self.relative_filepaths:
+            if not os.path.exists(os.path.join(self.root_directory, f)):
+                raise FileNotFoundError(f"File {f} does not exist")
+
+    def get_relative_filepaths(self) -> list[str]:
+        return self.relative_filepaths

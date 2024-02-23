@@ -17,12 +17,12 @@ print(f"Using device: {device}")
 
 
 def save_checkpoint(
+    checkpoint_dir,
     transformer,
     optimizer,
+    data_loader,
     epoch,
-    filepaths,
     file_idx,
-    checkpoint_dir,
     max_checkpoints=None,
 ):
     """Args:
@@ -56,10 +56,9 @@ def save_checkpoint(
     torch.save(
         {
             "epoch": epoch,
-            "start_file_idx": file_idx,
-            "ordered_filepaths": filepaths,
             "model_state_dict": transformer.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
+            "dataloader_state_dict": data_loader.state_dict(),
         },
         checkpoint_filepath,
     )
@@ -67,7 +66,7 @@ def save_checkpoint(
     print(f"Checkpoint saved")
 
 
-def load_checkpoint(checkpoint_relpath, checkpoint_dir, transformer, optimizer):
+def load_checkpoint(filepath, transformer, optimizer, data_loader):
     """Load a checkpoint and return the epoch, file index, and ordered filepaths.
     Load model and optimizer in place, return the other values.
 
@@ -77,16 +76,13 @@ def load_checkpoint(checkpoint_relpath, checkpoint_dir, transformer, optimizer):
         transformer (nn.Module): The model to load the checkpoint into
         optimizer (torch.optim): The optimizer to load the checkpoint into
     """
-    if not os.path.exists(os.path.join(checkpoint_dir, checkpoint_relpath)):
-        raise FileNotFoundError(f"Checkpoint file {checkpoint_relpath} not found")
-    checkpoint = torch.load(os.path.join(checkpoint_dir, checkpoint_relpath))
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f"Checkpoint file {filepath} not found")
+    checkpoint = torch.load(filepath)
     transformer.load_state_dict(checkpoint["model_state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-    return (
-        checkpoint["epoch"],
-        checkpoint["start_file_idx"],
-        checkpoint["ordered_filepaths"],
-    )
+    data_loader.load_state_dict(checkpoint["dataloader_state_dict"])
+    return checkpoint["epoch"]
 
 
 ### Define Parameters
@@ -117,7 +113,7 @@ n_heads = int(n_heads)
 # data_dir = "D://data/embedded_text/wikipedia_vocab64_seqlen15k"
 data_dir = ".data\\tokenized_test_128"
 batch_size = 320
-n_epochs = 3
+n_epochs = 20
 lr = 2e-4
 weight_decay = 0.0
 
@@ -129,12 +125,12 @@ proportion_random_token = 0.1
 # proportion_random_token = 0.0
 
 # Checkpointing
-FLAG_LOAD_CHECKPOINT = False
+FLAG_LOAD_CHECKPOINT = True
 checkpoint_dir = ".checkpoints"
 checkpoint_epoch_dir = os.path.join(checkpoint_dir, "epoch")
 checkpoint_every = 50
 max_checkpoints = 5
-checkpoint_relpath = "epoch0_file3400.pt"
+checkpoint_relpath = "epoch1_file0.pt"
 # checkpoint_relpath = "epoch/epoch6_file0.pt"
 
 transformer = EncoderTransformer(
@@ -151,7 +147,19 @@ transformer = EncoderTransformer(
     dropout,
 ).to(device)
 
-if not FLAG_LOAD_CHECKPOINT:
+if FLAG_LOAD_CHECKPOINT:
+    optimizer = optim.Adam(transformer.parameters())
+    data_loader = data_ops.DataLoader(data_dir, find_files=False, device=device)
+    start_epoch = load_checkpoint(
+        os.path.join(checkpoint_dir, checkpoint_relpath),
+        transformer,
+        optimizer,
+        data_loader,
+    )
+    file_idx = data_loader.file_idx
+    initial_file_idx = file_idx
+    last_checkpoint_idx = file_idx
+else:
     data_ops.create_directory(checkpoint_dir, reset=True)
     data_ops.create_directory(checkpoint_epoch_dir, reset=True)
 
@@ -162,20 +170,9 @@ if not FLAG_LOAD_CHECKPOINT:
     initial_file_idx = 0
 
     # Keep only the relative path from the data directory
-    filepaths = data_ops.gather_files(data_dir, file_extension=".pt")
-    np.random.shuffle(filepaths)
-    rel_filepaths = [os.path.relpath(f, data_dir) for f in filepaths]
+    data_loader = data_ops.DataLoader(data_dir, batch_size, device=device)
 
-    checkpointed_files = 0
-else:
-    optimizer = optim.Adam(transformer.parameters())
-    start_epoch, file_idx, rel_filepaths = load_checkpoint(
-        checkpoint_relpath, checkpoint_dir, transformer, optimizer
-    )
-    initial_file_idx = file_idx
-    checkpointed_files = file_idx
-    filepaths = [os.path.join(data_dir, f) for f in rel_filepaths]
-
+    last_checkpoint_idx = 0
 
 wandb.init(
     project="transformer-encoder",
@@ -208,53 +205,50 @@ print(
 )
 
 
-xe_losses = []
+def print_progress(total_start, checkpoint_start, total_n_files, checkpoint_n_files):
+    if total_n_files == 0:
+        return
+    total_elapsed = time.time() - total_start
+    checkpoint_elapsed = time.time() - checkpoint_start
+    total_avg_time = total_elapsed / total_n_files
+    checkpoint_avg_time = (
+        checkpoint_elapsed / checkpoint_n_files if checkpoint_n_files > 0 else 0
+    )
 
-start = time.time()
-checkpoint_start = time.time()
+    print(
+        f"Total: {data_ops.seconds_to_ms(total_elapsed)} ({total_avg_time:.2f}s/file) | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({checkpoint_avg_time:.2f}s/file)"
+    )
+
+
 for epoch in range(start_epoch, n_epochs):
     print(f"Epoch {epoch}/{n_epochs-1}")
+    start = time.time()
+    checkpoint_start = time.time()
 
-    # Load data
-    data_loader = data_ops.DataLoader(
-        filepaths,
-        batch_size=batch_size,
-        file_idx=file_idx,
-        shuffle_contents=True,
-        device=device,
-    )
-    checkpoint_xe = []
-    for i, batch, file_idx in data_loader:
+    for batch, batch_counter, file_idx in data_loader:
         # Checkpoint
-        if file_idx % checkpoint_every == 0 and file_idx > checkpointed_files:
+        if file_idx % checkpoint_every == 0 and file_idx > last_checkpoint_idx:
             save_checkpoint(
+                checkpoint_dir,
                 transformer,
                 optimizer,
+                data_loader,
                 epoch,
-                rel_filepaths,
                 file_idx,
-                checkpoint_dir,
-                max_checkpoints=max_checkpoints,
+                max_checkpoints,
             )
-            elapsed = time.time() - start
-            checkpoint_elapsed = time.time() - checkpoint_start
-            mean_mean_xe = np.mean([x[1] for x in checkpoint_xe])
-            wandb.log(
-                {
-                    "epoch": epoch,
-                    "file_idx": file_idx - 1,
-                    "cross_entropy": mean_mean_xe,
-                }
-            )
-            print(
-                f"Total: {data_ops.seconds_to_ms(elapsed)} | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/len(checkpoint_xe):.2f}s/file) | Mean Cross-Entropy: {(mean_mean_xe):.5f}"
+            print_progress(
+                start,
+                checkpoint_start,
+                file_idx - initial_file_idx,
+                file_idx - last_checkpoint_idx,
             )
             checkpoint_start = time.time()
-            checkpoint_xe = []
-            checkpointed_files += checkpoint_every
+            last_checkpoint_idx = file_idx
+
         optimizer.zero_grad()
 
-        # Mask tokens
+        ## Mask tokens
         masked_batch, masked_batch_bool = data_ops.mask_tokens(
             batch,
             mask_id=mask_idx,
@@ -265,10 +259,10 @@ for epoch in range(start_epoch, n_epochs):
             proportion_random_token=proportion_random_token,
         )
 
-        # Forward pass
+        ## Forward pass
         all_token_likelihoods = transformer(masked_batch)  # output: b,s,voc
 
-        # Calculate cross-entropy loss
+        ## Calculate cross-entropy loss
         masked_all_token_likelihoods = all_token_likelihoods[masked_batch_bool]
         masked_actual_token_indices = batch[masked_batch_bool]
         loss = torch.nn.functional.cross_entropy(
@@ -281,29 +275,34 @@ for epoch in range(start_epoch, n_epochs):
         # log_likelihood = torch.neg(torch.log(masked_actual_token_likelihoods))
         # loss = log_likelihood.mean()
 
-        # Backward pass
-
         loss.backward()
         optimizer.step()
-        checkpoint_xe.append((i, loss.item()))
+        wandb.log(
+            {
+                "epoch": epoch,
+                "batch_number": batch_counter,
+                "cross_entropy": loss.item(),
+            }
+        )
 
-    save_checkpoint(
-        transformer,
-        optimizer,
-        epoch + 1,
-        rel_filepaths,
-        file_idx=0,
-        checkpoint_dir=checkpoint_epoch_dir,
-        max_checkpoints=max_checkpoints,
-    )
+    ## Reset loaded variables
+    initial_file_idx = 0
+    last_checkpoint_idx = -1  # to ensure the first checkpoint is saved
 
-    elapsed = time.time() - start
-    checkpoint_elapsed = time.time() - checkpoint_start
-    mean_mean_xe = np.mean([x[1] for x in checkpoint_xe])
-    wandb.log({"epoch": epoch, "file_idx": file_idx, "cross_entropy": mean_mean_xe})
-    print(
-        f"Total: {data_ops.seconds_to_ms(elapsed)} ({elapsed/(file_idx - initial_file_idx):.2f}s/file) | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({elapsed/len(checkpoint_xe):.2f}s/file) | Mean Cross-Entropy: {(mean_mean_xe):.5f}"
-    )
 
-    file_idx = 0
-    checkpointed_files = 0
+## Save final model
+save_checkpoint(
+    checkpoint_epoch_dir,
+    transformer,
+    optimizer,
+    data_loader,
+    epoch + 1,
+    file_idx=0,
+    max_checkpoints=max_checkpoints,
+)
+print_progress(
+    start,
+    checkpoint_start,
+    file_idx - initial_file_idx,
+    file_idx - last_checkpoint_idx,
+)
