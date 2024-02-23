@@ -1,6 +1,6 @@
 import torch
-import data_ops
 import os
+from . import data_ops
 
 
 def save_checkpoint(
