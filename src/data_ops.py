@@ -85,7 +85,9 @@ def mask_tokens(
     )
     masked_input_batch[random_tokens_bool] = random_words[random_tokens_bool]
 
-    return masked_input_batch, masked_tokens_bool
+    attention_mask = (~padding_mask).long()
+
+    return masked_input_batch, masked_tokens_bool, attention_mask
 
 
 class DataLoader:

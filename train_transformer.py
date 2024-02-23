@@ -182,7 +182,7 @@ for epoch in range(start_epoch, n_epochs):
         optimizer.zero_grad()
 
         ## Mask tokens
-        masked_batch, masked_batch_bool = data_ops.mask_tokens(
+        batch_masked, batch_masked_bool, batch_attention_mask = data_ops.mask_tokens(
             batch,
             mask_id=mask_idx,
             pad_id=padding_idx,
@@ -193,11 +193,11 @@ for epoch in range(start_epoch, n_epochs):
         )
 
         ## Forward pass
-        all_token_likelihoods = transformer(masked_batch)  # output: b,s,voc
+        batch_all_token_likelihoods = transformer(batch_masked)  # output: b,s,voc
 
         ## Calculate loss
         loss = loss_functions.cross_entropy(
-            all_token_likelihoods, masked_batch, masked_batch_bool
+            batch_all_token_likelihoods, batch_masked, batch_masked_bool
         )
 
         ## Optimize
@@ -209,7 +209,7 @@ for epoch in range(start_epoch, n_epochs):
                 "batch_number": batch_counter,
                 "cross_entropy": loss.item(),
                 "log_likelihood": -loss_functions.negative_log_likelihood(
-                    all_token_likelihoods, masked_batch, masked_batch_bool
+                    batch_all_token_likelihoods, batch_masked, batch_masked_bool
                 ),
             }
         )
