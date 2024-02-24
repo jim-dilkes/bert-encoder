@@ -7,6 +7,7 @@ def save_checkpoint(
     checkpoint_dir,
     transformer,
     optimizer,
+    scheduler,
     data_loader,
     epoch,
     file_idx,
@@ -45,6 +46,7 @@ def save_checkpoint(
             "epoch": epoch,
             "model_state_dict": transformer.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
             "dataloader_state_dict": data_loader.state_dict(),
         },
         checkpoint_filepath,
@@ -53,7 +55,7 @@ def save_checkpoint(
     print(f"Checkpoint saved")
 
 
-def load_checkpoint(filepath, transformer, optimizer, data_loader):
+def load_checkpoint(filepath, transformer, optimizer, scheduler, data_loader):
     """Load a checkpoint and return the epoch, file index, and ordered filepaths.
     Load model and optimizer in place, return the other values.
 
@@ -68,5 +70,6 @@ def load_checkpoint(filepath, transformer, optimizer, data_loader):
     checkpoint = torch.load(filepath)
     transformer.load_state_dict(checkpoint["model_state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
     data_loader.load_state_dict(checkpoint["dataloader_state_dict"])
     return checkpoint["epoch"]

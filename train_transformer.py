@@ -47,8 +47,14 @@ n_heads = int(n_heads)
 data_dir = ".data\\tokenized_test_128"
 batch_size = 320
 n_epochs = 20
-lr = 2e-4
-weight_decay = 0.0
+warmup_steps = 4000
+## Learning rate scheduler
+lr_lambda = lambda step: d_model ** (-0.5) * min(
+    (step + 1) ** (-0.5), (step + 1) * warmup_steps ** (-1.5)
+)
+# lr = 2e-4
+
+weight_decay = 0.01
 
 ## Masking
 mask_probability = 0.15
@@ -82,11 +88,13 @@ transformer = EncoderTransformer(
 
 if FLAG_LOAD_CHECKPOINT:
     optimizer = optim.Adam(transformer.parameters())
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     data_loader = data_ops.DataLoader(data_dir, find_files=False, device=device)
     start_epoch = load_checkpoint(
         os.path.join(checkpoint_dir, checkpoint_relpath),
         transformer,
         optimizer,
+        scheduler,
         data_loader,
     )
     file_idx = data_loader.file_idx
@@ -96,7 +104,8 @@ else:
     data_ops.create_directory(checkpoint_dir, reset=True)
     data_ops.create_directory(checkpoint_epoch_dir, reset=True)
 
-    optimizer = optim.Adam(transformer.parameters(), lr=lr, weight_decay=weight_decay)
+    optimizer = optim.Adam(transformer.parameters(), lr=0, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     start_epoch = 0
     file_idx = 0
@@ -106,6 +115,7 @@ else:
     data_loader = data_ops.DataLoader(data_dir, batch_size, device=device)
 
     last_checkpoint_idx = 0
+
 
 wandb.init(
     project="transformer-encoder",
@@ -124,7 +134,7 @@ wandb.init(
         "num_heads": n_heads,
         "batch_size": batch_size,
         "num_epochs": n_epochs,
-        "learning_rate": lr,
+        "warmup_steps": warmup_steps,
         "mask_probability": mask_probability,
         "proportion_mask_token": proportion_mask_token,
         "proportion_random_token": proportion_random_token,
@@ -165,6 +175,7 @@ for epoch in range(start_epoch, n_epochs):
                 checkpoint_dir,
                 transformer,
                 optimizer,
+                scheduler,
                 data_loader,
                 epoch,
                 file_idx,
@@ -205,6 +216,7 @@ for epoch in range(start_epoch, n_epochs):
         ## Optimize
         loss.backward()
         optimizer.step()
+        scheduler.step()
         wandb.log(
             {
                 "epoch": epoch,
@@ -226,6 +238,7 @@ save_checkpoint(
     checkpoint_epoch_dir,
     transformer,
     optimizer,
+    scheduler,
     data_loader,
     epoch + 1,
     file_idx=0,
