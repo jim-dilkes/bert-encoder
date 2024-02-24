@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import torch
 import torch.optim as optim
@@ -230,6 +231,24 @@ for epoch in range(start_epoch, n_epochs):
                 "learning_rate": scheduler.get_last_lr()[0],
             }
         )
+
+        # If loss.item() is nan, record diagnostics to file and break
+        if torch.isnan(loss):
+            print("Loss is NaN. Saving diagnostics to file and breaking.")
+            diagnostics = {
+                "epoch": epoch,
+                "batch_number": batch_counter,
+                "loss": loss.item(),
+                "batch_size": batch_size,
+                "file_index": file_idx,
+                "file_path": data_loader.get_current_file_relpath(),
+                "model_state_dict": transformer.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+            }
+            with open("diagnostics.json", "w") as f:
+                json.dump(diagnostics, f)
+            break
 
     ## Reset loaded variables
     initial_file_idx = 0

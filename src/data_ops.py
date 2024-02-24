@@ -281,3 +281,6 @@ class DataLoader:
 
     def get_relative_filepaths(self) -> list[str]:
         return self.relative_filepaths
+
+    def get_current_file_relpath(self) -> str:
+        return self.relative_filepaths[self.file_idx]
