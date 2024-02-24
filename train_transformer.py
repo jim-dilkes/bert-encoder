@@ -43,15 +43,13 @@ if n_heads != int(n_heads):
 n_heads = int(n_heads)
 
 ## Training
-data_dir = "D://data/embedded_text/wikipedia_vocab64_seqlen15k"
+data_dir = "D://data/embedded_text/wikipedia_vocab64_seqlen15k/train"
 # data_dir = ".data\\tokenized_test_128"
 batch_size = 640
 n_epochs = 20
-warmup_steps = 4000
+warmup_steps = 10000
 ## Learning rate scheduler
-lr_lambda = lambda step: d_model ** (-0.5) * min(
-    (step + 1) ** (-0.5), (step + 1) * warmup_steps ** (-1.5)
-)
+lr_lambda = lambda step: min((step + 1) ** (-0.5), (step + 1) * warmup_steps ** (-1.5))
 # lr = 2e-4
 
 weight_decay = 0.01
@@ -104,7 +102,9 @@ else:
     data_ops.create_directory(checkpoint_dir, reset=True)
     data_ops.create_directory(checkpoint_epoch_dir, reset=True)
 
-    optimizer = optim.Adam(transformer.parameters(), lr=0, weight_decay=weight_decay)
+    optimizer = optim.Adam(
+        transformer.parameters(), weight_decay=weight_decay, lr=d_model ** (-0.5)
+    )
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     start_epoch = 0
@@ -225,6 +225,7 @@ for epoch in range(start_epoch, n_epochs):
                 "log_likelihood": -loss_functions.negative_log_likelihood(
                     batch_all_token_likelihoods, batch_masked, batch_masked_bool
                 ),
+                "learning_rate": scheduler.get_last_lr()[0],
             }
         )
 
