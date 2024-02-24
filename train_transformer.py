@@ -49,8 +49,10 @@ batch_size = 640
 n_epochs = 20
 warmup_steps = 10000
 ## Learning rate scheduler
-lr_lambda = lambda step: min((step + 1) ** (-0.5), (step + 1) * warmup_steps ** (-1.5))
-# lr = 2e-4
+lr_lambda = lambda step: d_model ** (-0.5) * min(
+    (step + 1) ** (-0.5), (step + 1) * warmup_steps ** (-1.5)
+)
+lr_scale = 1
 
 weight_decay = 0.01
 
@@ -103,7 +105,7 @@ else:
     data_ops.create_directory(checkpoint_epoch_dir, reset=True)
 
     optimizer = optim.Adam(
-        transformer.parameters(), weight_decay=weight_decay, lr=d_model ** (-0.5)
+        transformer.parameters(), weight_decay=weight_decay, lr=lr_scale
     )
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
