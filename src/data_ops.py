@@ -201,7 +201,6 @@ class DataLoader:
                 data = torch.cat(data, dim=0)
             if self.shuffle_contents:
                 data[torch.randperm(data.size(0))]
-            print(f"Loaded file {file_path} | {len(data)} examples")
 
             self.this_file_batch_counter = 0
             self.this_file_example_counter = 0
@@ -210,10 +209,10 @@ class DataLoader:
         if self.file_idx >= self.n_files:
             data = None  # Don't StopIteration yet, let the hanging batch be returned
         else:
-            print(
-                f"Loading file number {self.file_idx+1}/{self.n_files} (idx {self.file_idx}) | Done {self.example_counter} examples in {self.batch_counter} batches"
-            )
             data = _get_next_file_data()
+            print(
+                f"Loading file number {self.file_idx+1}/{self.n_files} (idx {self.file_idx}) containing {len(data)} examples | Done {self.example_counter} examples in {self.batch_counter} batches this session"
+            )
 
         self.example_buffer, self.hanging_batch = self._prepare_batches(
             data, self.batch_size, self.hanging_batch
