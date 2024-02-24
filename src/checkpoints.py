@@ -13,21 +13,24 @@ def save_checkpoint(
     file_idx,
     max_checkpoints=None,
 ):
-    """Args:
+    """Save a checkpoint to a file
+
+    Args:
+    checkpoint_dir (str): Directory to save the checkpoint
     transformer (nn.Module): The model to save
     optimizer (torch.optim): The optimizer to save
-    epoch (int): The epoch number
-    filepaths (list): The ordered list of filepaths
-    file_idx (int): The index of the file to start with
-    checkpoint_dir (str): The directory to save the checkpoint
-    max_checkpoints (int): The maximum number of checkpoints to keep
+    scheduler (torch.optim.lr_scheduler): The scheduler to save
+    data_loader (data_ops.DataLoader): The data loader to save
+    epoch (int): The epoch to save
+    file_idx (int): The file index to save
+    max_checkpoints (int): The maximum number of checkpoints to keep in the directory
     """
 
     checkpoint_filepath = os.path.join(
         checkpoint_dir, f"epoch{epoch}_file{file_idx}.pt"
     )
     print(
-        f"Saving checkpoint for epoch {epoch}, beginning with file {file_idx} to {checkpoint_filepath}"
+        f"Saving checkpoint prior to file {file_idx} in epoch {epoch} to {checkpoint_filepath}"
     )
 
     # Remove old checkpoints if there are too many
@@ -56,14 +59,14 @@ def save_checkpoint(
 
 
 def load_checkpoint(filepath, transformer, optimizer, scheduler, data_loader):
-    """Load a checkpoint and return the epoch, file index, and ordered filepaths.
-    Load model and optimizer in place, return the other values.
+    """Load a checkpoint from a file
 
     Args:
-        checkpoint_name (str): Name of the checkpoint file
-        checkpoint_dir (str): Directory where the checkpoint is stored
-        transformer (nn.Module): The model to load the checkpoint into
-        optimizer (torch.optim): The optimizer to load the checkpoint into
+    filepath (str): The filepath to the checkpoint
+    transformer (nn.Module): The model to load in to
+    optimizer (torch.optim): The optimizer to load in to
+    scheduler (torch.optim.lr_scheduler): The scheduler to load in to
+    data_loader (data_ops.DataLoader): The data loader to load in to
     """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Checkpoint file {filepath} not found")

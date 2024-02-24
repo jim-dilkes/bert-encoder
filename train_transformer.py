@@ -21,7 +21,7 @@ print(f"Using device: {device}")
 ### Define Parameters
 ## Tokenizer
 # tokenizer_filepath = f".tokenizers/tok_SL128_V15000.json"
-tokenizer_filepath = f".tokenizers/tok_SL128_V15000.json"
+tokenizer_filepath = f".tokenizers/tok_SL64_V15000.json"
 tokenizer = Tokenizer.from_file(tokenizer_filepath)
 vocab_size = tokenizer.get_vocab_size()
 sequence_length = tokenizer.truncation["max_length"]
@@ -43,9 +43,9 @@ if n_heads != int(n_heads):
 n_heads = int(n_heads)
 
 ## Training
-# data_dir = "D://data/embedded_text/wikipedia_vocab64_seqlen15k"
-data_dir = ".data\\tokenized_test_128"
-batch_size = 320
+data_dir = "D://data/embedded_text/wikipedia_vocab64_seqlen15k"
+# data_dir = ".data\\tokenized_test_128"
+batch_size = 640
 n_epochs = 20
 warmup_steps = 4000
 ## Learning rate scheduler
@@ -64,7 +64,7 @@ proportion_random_token = 0.1
 # proportion_random_token = 0.0
 
 # Checkpointing
-FLAG_LOAD_CHECKPOINT = True
+FLAG_LOAD_CHECKPOINT = False
 checkpoint_dir = ".checkpoints"
 checkpoint_epoch_dir = os.path.join(checkpoint_dir, "epoch")
 checkpoint_every = 50

@@ -111,12 +111,13 @@ class DataLoader:
         device: str = "cpu",
     ):
         """Args:
-        - filepaths: list of filepaths to load data from
-        - batch_size: number of examples per batch
-        - file_idx: index of the first file to load
-        - shuffle_contents: shuffle the contents of each file
-        - device: device to load data onto
-
+        root_directory (str): The directory containing the data files
+        batch_size (int): The number of examples to load in to each batch
+        find_files (bool): Whether to search for files in the root_directory
+        shuffle_files (bool): Whether to shuffle the filepaths
+        shuffle_contents (bool): Whether to shuffle the contents of each file
+        random_seed (int): The random seed for shuffling
+        device (str): The device to load the data onto
         """
 
         self.batch_size = batch_size
