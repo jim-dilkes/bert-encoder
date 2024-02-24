@@ -193,7 +193,9 @@ for epoch in range(start_epoch, n_epochs):
         )
 
         ## Forward pass
-        batch_all_token_likelihoods = transformer(batch_masked)  # output: b,s,voc
+        batch_all_token_likelihoods = transformer(
+            batch_masked, batch_attention_mask
+        )  # output: b,s,voc
 
         ## Calculate loss
         loss = loss_functions.cross_entropy(

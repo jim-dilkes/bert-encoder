@@ -5,6 +5,7 @@ from einops import rearrange
 import numpy as np
 
 from collections import OrderedDict
+from typing import Tuple
 
 
 def generate_pe_matrix(embedding_dim: int, n_input_tokens: int) -> torch.Tensor:
@@ -105,8 +106,10 @@ class MultiHeadSelfAttention(nn.Module):
 
         self.layer_norm = nn.LayerNorm([self.sequence_length, self.model_dim])
 
-    def forward(self, x: torch.Tensor, attn_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, x_attn_tuple: Tuple[torch.Tensor]) -> torch.Tensor:
+        x, attention_mask = x_attn_tuple
         # x: b,s,m
+        # attention_mask: b,s
 
         ## Scaled Attention
         qk = self.linear_m_qk(x)
@@ -117,6 +120,9 @@ class MultiHeadSelfAttention(nn.Module):
         # q,k: h,b,s,k,1
         attn = torch.einsum("hbimz,hbjmz->hbij", [q, k]) / np.sqrt(self.k_dim)
         # attn: h,b,s_q,s_v
+        attn = attn.masked_fill(
+            attention_mask.unsqueeze(0).unsqueeze(2) == 0, float("-inf")
+        )
         attn = self.softmax_k(attn)  # Softmax along dim 3 (s_v)
 
         ## Generate the value tensor
@@ -139,7 +145,7 @@ class MultiHeadSelfAttention(nn.Module):
         out = self.layer_norm(out + x)
         # out: b,s,m
 
-        return out
+        return out, attention_mask
 
 
 class FeedForward(nn.Module):
@@ -166,6 +172,13 @@ class FeedForward(nn.Module):
         out = self.dropout(out)
         out = self.layer_norm(out + x)
         return out
+
+
+class MHSAFeedForward(FeedForward):
+    def forward(self, x_attn_tuple: Tuple[torch.Tensor]) -> torch.Tensor:
+        x, attention_mask = x_attn_tuple
+        out = super().forward(x)
+        return out, attention_mask
 
 
 class EncoderTransformer(nn.Module):
@@ -214,7 +227,7 @@ class EncoderTransformer(nn.Module):
             mhsa_modules.append(
                 (
                     f"ff_{i}",
-                    FeedForward(
+                    MHSAFeedForward(
                         model_dim=model_dim, ff_dim=ff_dim, dropout_ratio=dropout_ratio
                     ),
                 )
@@ -228,11 +241,14 @@ class EncoderTransformer(nn.Module):
             nn.Softmax(dim=2),
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, attention_mask: torch.Tensor = None
+    ) -> torch.Tensor:
         # x: b,s
         x = self.embedding(x)
         # x: b,s,m
-        x = self.mhsa(x)
+        x_attn_tuple = self.mhsa((x, attention_mask))
+        x = x_attn_tuple[0]
         # x: b,s,m
         x = self.output(x)
         # x: b,s,voc
