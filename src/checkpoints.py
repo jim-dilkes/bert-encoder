@@ -9,6 +9,7 @@ def save_checkpoint(
     optimizer,
     scheduler,
     data_loader,
+    run_name,
     epoch,
     file_idx,
     max_checkpoints=None,
@@ -27,7 +28,7 @@ def save_checkpoint(
     """
 
     checkpoint_filepath = os.path.join(
-        checkpoint_dir, f"epoch{epoch}_file{file_idx}.pt"
+        checkpoint_dir, f"{run_name}_epoch{epoch}_file{file_idx}.pt"
     )
     print(
         f"Saving checkpoint prior to file {file_idx} in epoch {epoch} to {checkpoint_filepath}"
