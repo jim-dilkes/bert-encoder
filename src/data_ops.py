@@ -40,7 +40,7 @@ def mask_tokens(
     vocab_low_high: tuple[int, int] = (5, 15000),
     proportion_mask_token: float = 0.8,
     proportion_random_token: float = 0.1,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Mask random tokens in a batch of input data."""
 
     assert mask_prob <= 1.0 and mask_prob >= 0
