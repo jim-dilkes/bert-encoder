@@ -86,6 +86,8 @@ def main():
     if FLAG_TRACK_WANDB:
         wandb.init(
             project="transformer-encoder",
+            run_id=WANDB_RUN_ID if WANDB_RUN_ID else wandb.util.generate_id(),
+            resume="must" if WANDB_RUN_ID else None,
             name=RUN_NAME,
             config=dict(
                 {
@@ -286,6 +288,9 @@ if __name__ == "__main__":
         action="store_true",
         help="Track training progress with Weights and Biases",
     )
+    parser.add_argument(
+        "wandb_run_id", type=str, default="", help="WandB run ID, set to resume run"
+    )
     args = parser.parse_args()
 
     ## Load configuration from YAML file
@@ -337,6 +342,7 @@ if __name__ == "__main__":
 
     ## WandB
     FLAG_TRACK_WANDB = args.wandb
+    WANDB_RUN_ID = args.wandb_run_id
 
     ## Run name
     run_identifier = args.config_file.split("/")[-1].split(".")[0]
