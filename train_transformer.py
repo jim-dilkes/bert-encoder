@@ -54,7 +54,7 @@ def main():
         data_loader = data_ops.DataLoader(
             TRAIN_DATA_DIR, find_files=False, device=DEVICE
         )
-        start_epoch = load_checkpoint(
+        start_epoch, global_step = load_checkpoint(
             os.path.join(CHKPT_LOAD_FILEPATH),
             transformer,
             optimizer,
@@ -74,6 +74,7 @@ def main():
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
         start_epoch = 0
+        global_step = 0
         file_idx = 0
         initial_file_idx = 0
 
@@ -194,6 +195,8 @@ def main():
                 print("Loss is NaN")
                 end_run = True
                 break
+
+            global_step += 1
 
         if end_run:
             break

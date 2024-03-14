@@ -11,6 +11,7 @@ def save_checkpoint(
     data_loader,
     run_name,
     epoch,
+    global_step,
     file_idx,
     max_checkpoints=None,
 ):
@@ -48,6 +49,7 @@ def save_checkpoint(
     torch.save(
         {
             "epoch": epoch,
+            "global_step": global_step,
             "model_state_dict": transformer.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict(),
@@ -76,4 +78,11 @@ def load_checkpoint(filepath, transformer, optimizer, scheduler, data_loader):
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
     data_loader.load_state_dict(checkpoint["dataloader_state_dict"])
-    return checkpoint["epoch"]
+    global_step = (
+        checkpoint["global_step"]
+        if "global_step" in checkpoint
+        else optimizer.state_dict()["state"][optimizer.param_groups[0]["params"][0]][
+            "step"
+        ]
+    )
+    return checkpoint["epoch"], global_step
