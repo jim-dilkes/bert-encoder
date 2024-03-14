@@ -247,10 +247,16 @@ if __name__ == "__main__":
     ## Parse command-line arguments
     parser = argparse.ArgumentParser(description="Transformer Training Script")
     parser.add_argument(
-        "--config_filepath",
+        "--config_file",
         type=str,
         default="model-config.yaml",
-        help="Path to config YAML file",
+        help="Config YAML file name",
+    )
+    parser.add_argument(
+        "--config_dir",
+        type=str,
+        default="configs",
+        help="Directory containing config YAML file",
     )
     parser.add_argument(
         "--data_dir", type=str, required=True, help="Directory for training data"
@@ -290,7 +296,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ## Load configuration from YAML file
-    with open(args.config_filepath, "r") as file:
+    with open(os.path.join(args.config_dir, args.config_file), "r") as file:
         CONFIG_DICT = yaml.safe_load(file)
 
     ## Device
