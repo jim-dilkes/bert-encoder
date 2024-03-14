@@ -196,25 +196,6 @@ def main():
 
             # If loss.item() is nan, record diagnostics to file and break
             if torch.isnan(loss):
-                print("Loss is NaN. Saving diagnostics to file and breaking.")
-                torch.save(
-                    {
-                        "epoch": epoch,
-                        "batch_number": batch_counter,
-                        "loss": loss.item(),
-                        "learning_rate": scheduler.get_last_lr()[0],
-                        "file_index": file_idx,
-                        "file_path": data_loader.get_current_file_relpath(),
-                        "model_state_dict": transformer.state_dict(),
-                        "optimizer_state_dict": optimizer.state_dict(),
-                        "scheduler_state_dict": scheduler.state_dict(),
-                        "last_batch_ikelihoods": batch_all_token_likelihoods,
-                        "last_batch_masked": batch_masked,
-                        "last_batch_masked_bool": batch_masked_bool,
-                        "last_batch_ground_truth": batch,
-                    },
-                    f"nan_diagnostics-{RUN_NAME}.pt",
-                )
                 end_run = True
                 break
 
