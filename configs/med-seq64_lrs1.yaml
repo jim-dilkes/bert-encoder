@@ -1,0 +1,55 @@
+# Model
+d_model:
+  desc: Model dimension
+  value: 512
+d_embedding:
+  desc: Embedding dimension
+  value: 512
+d_ff:
+  desc: Feedforward dimension
+  value: 2048
+d_k:
+  desc: Key dimension
+  value: 64
+d_v:
+  desc: Value dimension
+  value: 64
+n_layers:
+  desc: Number of layers
+  value: 8
+dropout:
+  desc: Dropout rate
+  value: 0.1
+n_heads:
+  desc: Number of heads
+  value: 8
+
+# Training
+epochs:
+  desc: Number of epochs to train over
+  value: 3
+batch_size:
+  desc: Size of each mini-batch
+  value: 128
+
+# Optimizer
+warmup_steps:
+  desc: Number of warmup steps for learning rate scheduler
+  value: 10000
+lr_scale:
+  desc: Learning rate scale
+  value: 1
+weight_decay:
+  desc: Weight decay for optimizer
+  value: 0.01
+
+# Masking
+mask_probability:
+  desc: Probability of masking a token
+  value: 0.15
+proportion_mask_token:
+  desc: Proportion of tokens to mask
+  value: 0.8
+proportion_random_token:
+  desc: Proportion of tokens to replace with a random token
+  value: 0.1
