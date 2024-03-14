@@ -2,6 +2,7 @@ import argparse
 import os
 import yaml
 import time
+
 import torch
 import torch.optim as optim
 
@@ -10,7 +11,6 @@ from src import loss_functions
 from src.checkpoints import load_checkpoint, save_checkpoint
 from src.transformer import EncoderTransformer
 
-# load tokenizer
 from tokenizers import Tokenizer
 
 import wandb
@@ -48,14 +48,14 @@ def main():
 
     ## Initialise training objects - either from checkpoint or from scratch
     if FLAG_LOAD_CHECKPOINT:
-        print(f"Loading checkpoint from {CHKPT_LOAD_REL_FILEPATH}")
+        print(f"Loading checkpoint from {CHKPT_LOAD_FILEPATH}")
         optimizer = optim.Adam(transformer.parameters())
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
         data_loader = data_ops.DataLoader(
             TRAIN_DATA_DIR, find_files=False, device=DEVICE
         )
         start_epoch = load_checkpoint(
-            os.path.join(CHKPT_DIR, CHKPT_LOAD_REL_FILEPATH),
+            os.path.join(CHKPT_LOAD_FILEPATH),
             transformer,
             optimizer,
             scheduler,
@@ -98,6 +98,7 @@ def main():
                 **{k: v["value"] for k, v in CONFIG_DICT.items()},
             ),
         )
+    weight_tracking_startswith = tuple(["embedding", "mhsa.mhsa_0", "output"])
 
     print("Training transformer model:")
     print(transformer)
@@ -169,6 +170,18 @@ def main():
 
             ## Track
             if FLAG_TRACK_WANDB:
+                grad_norms = {}
+                weight_stats = {}
+                for name, param in transformer.named_parameters():
+                    if name.startswith(weight_tracking_startswith):
+                        if param.grad is not None:
+                            grad_norms[name] = param.grad.data.norm(2).item()
+                        weight_stats[name + "_mean"] = param.data.mean().item()
+                        weight_stats[name + "_std"] = param.data.std().item()
+
+                # Log gradient norms
+                wandb.log({"grad_norms": grad_norms})
+
                 wandb.log(
                     {
                         "epoch": epoch,
@@ -176,6 +189,8 @@ def main():
                         "cross_entropy": loss.item(),
                         "log_likelihood": log_likelihood,
                         "learning_rate": scheduler.get_last_lr()[0],
+                        "weight_stats": weight_stats,
+                        "grad_norms": grad_norms,
                     }
                 )
 
@@ -217,6 +232,7 @@ def main():
         optimizer,
         scheduler,
         data_loader,
+        RUN_NAME,
         epoch + 1,
         file_idx=0,
         max_checkpoints=CHKPT_MAX_CHECKPOINTS,
@@ -336,7 +352,7 @@ if __name__ == "__main__":
     CHKPT_EPOCH_DIR = os.path.join(CHKPT_DIR, "epoch")
     CHKPT_RECORD_EVERY = args.checkpoint_every
     CHKPT_MAX_CHECKPOINTS = args.max_checkpoints
-    CHKPT_LOAD_REL_FILEPATH = args.load_checkpoint
+    CHKPT_LOAD_FILEPATH = args.load_checkpoint
 
     ## WandB
     FLAG_TRACK_WANDB = args.wandb
