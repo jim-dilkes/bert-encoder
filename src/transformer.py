@@ -237,8 +237,6 @@ class EncoderTransformer(nn.Module):
         ## Output layer - likelihood of each token at each position
         self.output = nn.Sequential(
             nn.Linear(model_dim, vocab_size),
-            nn.Dropout(dropout_ratio),
-            nn.Softmax(dim=2),
         )
 
     def forward(
