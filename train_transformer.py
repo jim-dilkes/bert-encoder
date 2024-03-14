@@ -196,6 +196,7 @@ def main():
 
             # If loss.item() is nan, record diagnostics to file and break
             if torch.isnan(loss):
+                print("Loss is NaN")
                 end_run = True
                 break
 
