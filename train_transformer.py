@@ -159,9 +159,6 @@ def main():
             loss = loss_functions.cross_entropy(
                 batch_all_token_outputs, batch, batch_masked_bool
             )
-            log_likelihood = -loss_functions.negative_log_likelihood(
-                batch_all_token_outputs, batch, batch_masked_bool
-            )
 
             ## Optimize
             loss.backward()
@@ -179,15 +176,11 @@ def main():
                         weight_stats[name + "_mean"] = param.data.mean().item()
                         weight_stats[name + "_std"] = param.data.std().item()
 
-                # Log gradient norms
-                wandb.log({"grad_norms": grad_norms})
-
                 wandb.log(
                     {
                         "epoch": epoch,
                         "batch_number": batch_counter,
                         "cross_entropy": loss.item(),
-                        "log_likelihood": log_likelihood,
                         "learning_rate": scheduler.get_last_lr()[0],
                         "weight_stats": weight_stats,
                         "grad_norms": grad_norms,
