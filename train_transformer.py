@@ -346,7 +346,7 @@ if __name__ == "__main__":
     FLAG_TRACK_WANDB = args.wandb
 
     ## Run name
-    run_identifier = args.config_filepath.split("/")[-1].split(".")[0]
+    run_identifier = args.config_file.split("/")[-1].split(".")[0]
     # run_identifier = f"lrs{OPT_LR_SCALE}_wu{OPT_WARMUP_STEPS/1000:.1f}K".replace(".", "-")
     run_suffix = time.strftime("%m%d_%H%M")
     RUN_NAME = f"{run_identifier}_{run_suffix}"
