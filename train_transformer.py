@@ -151,16 +151,16 @@ def main():
             )
 
             ## Forward pass
-            batch_all_token_likelihoods = transformer(
+            batch_all_token_outputs = transformer(
                 batch_masked, batch_attention_mask
-            )
+            )  # unnormailzed logits
 
             ## Calculate loss
             loss = loss_functions.cross_entropy(
-                batch_all_token_likelihoods, batch, batch_masked_bool
+                batch_all_token_outputs, batch, batch_masked_bool
             )
             log_likelihood = -loss_functions.negative_log_likelihood(
-                batch_all_token_likelihoods, batch, batch_masked_bool
+                batch_all_token_outputs, batch, batch_masked_bool
             )
 
             ## Optimize
