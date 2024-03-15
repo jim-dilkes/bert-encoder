@@ -175,14 +175,23 @@ class DataLoader:
                 batch = self.hanging_batch
                 self.hanging_batch = None
                 self._update_counters(len(batch), 1)
-                return batch, self.batch_counter, self.file_idx
+                return (
+                    self._remove_empty_examples(batch),
+                    self.batch_counter,
+                    self.file_idx,
+                )
             self.file_idx = None  # Reset file_idx to None
             self.this_file_example_counter = 0
             raise StopIteration
 
         batch = self.example_buffer[self.buffer_idx]
         self._update_counters(len(batch), 1)
-        return batch, self.batch_counter, self.file_idx
+        return self._remove_empty_examples(batch), self.batch_counter, self.file_idx
+
+    @staticmethod
+    def _remove_empty_examples(data: torch.Tensor) -> torch.Tensor:
+        """Remove examples with no content, all tokens are pad_id (1)"""
+        return data[~(data == 1).all(dim=-1)]
 
     def _update_counters(self, n_examples: int, n_batches: int):
         self.example_counter += n_examples
@@ -211,7 +220,7 @@ class DataLoader:
         else:
             data = _get_next_file_data()
             print(
-                f"Loading file number {self.file_idx+1}/{self.n_files} (idx {self.file_idx}) containing {len(data)} examples | Done {self.example_counter} examples in {self.batch_counter} batches this session"
+                f"Loading file number {self.file_idx+1}/{self.n_files} (idx {self.file_idx}) containing {len(data)} examples | Done {self.example_counter} examples in {self.batch_counter} batches"
             )
 
         self.example_buffer, self.hanging_batch = self._prepare_batches(
