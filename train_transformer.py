@@ -84,23 +84,28 @@ def main():
         )
         last_checkpoint_idx = 0
 
+    if TRAIN_OVERRIDE_BATCH_SIZE is not None:
+        data_loader.batch_size = TRAIN_OVERRIDE_BATCH_SIZE
+
     if FLAG_TRACK_WANDB:
-        wandb.init(
-            project="transformer-encoder",
-            run_id=WANDB_RUN_ID if WANDB_RUN_ID else wandb.util.generate_id(),
-            resume="must" if WANDB_RUN_ID else None,
-            name=RUN_NAME,
-            config=dict(
-                {
-                    "dataset": TRAIN_DATA_DIR,
-                    "tokenizer": TOKENIZER_FILEPATH,
-                    "vocab_size": vocab_size,
-                    "sequence_length": sequence_length,
-                },
-                # Extract the values from the config dictionary
-                **{k: v["value"] for k, v in CONFIG_DICT.items()},
-            ),
-        )
+        if FLAG_RESUME_WANDB:
+            wandb.init(project=PROJECT_NAME, id=WANDB_RUN_ID, resume="must")
+        else:
+            wandb.init(
+                project=PROJECT_NAME,
+                id=WANDB_RUN_ID,
+                name=RUN_NAME,
+                config=dict(
+                    {
+                        "dataset": TRAIN_DATA_DIR,
+                        "tokenizer": TOKENIZER_FILEPATH,
+                        "vocab_size": vocab_size,
+                        "sequence_length": sequence_length,
+                    },
+                    # Extract the values from the config dictionary
+                    **{k: v["value"] for k, v in CONFIG_DICT.items()},
+                ),
+            )
     weight_tracking_startswith = tuple(["embedding", "mhsa.mhsa_0", "output"])
 
     print("Training transformer model:")
@@ -108,7 +113,6 @@ def main():
     print(
         f"Number of parameters: {sum(p.numel() for p in transformer.parameters() if p.requires_grad)}\n"
     )
-    end_run = False
 
     for epoch in range(start_epoch, TRAIN_N_EPOCHS):
         print(f"Epoch {epoch}/{TRAIN_N_EPOCHS-1}")
@@ -128,6 +132,7 @@ def main():
                     data_loader,
                     RUN_NAME,
                     epoch,
+                    global_step,
                     file_idx,
                     CHKPT_MAX_CHECKPOINTS,
                 )
@@ -156,7 +161,7 @@ def main():
             ## Forward pass
             batch_all_token_outputs = transformer(
                 batch_masked, batch_attention_mask
-            )  # unnormailzed logits
+            )  # unnormalized logits
 
             ## Calculate loss
             loss = loss_functions.cross_entropy(
@@ -190,16 +195,7 @@ def main():
                     }
                 )
 
-            # If loss.item() is nan, record diagnostics to file and break
-            if torch.isnan(loss):
-                print("Loss is NaN")
-                end_run = True
-                break
-
             global_step += 1
-
-        if end_run:
-            break
 
         ## Reset loaded variables
         initial_file_idx = 0
@@ -214,6 +210,7 @@ def main():
         data_loader,
         RUN_NAME,
         epoch + 1,
+        global_step,
         file_idx=0,
         max_checkpoints=CHKPT_MAX_CHECKPOINTS,
     )
@@ -239,8 +236,33 @@ def print_progress(total_start, checkpoint_start, total_n_files, checkpoint_n_fi
         f"Total: {data_ops.seconds_to_ms(total_elapsed)} ({total_avg_time:.2f}s/file) | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({checkpoint_avg_time:.2f}s/file)"
     )
 
+def check_nans(model, output, loss):
+    if torch.isnan(output).any():
+        n_nan = torch.isnan(output).sum().item()
+        n_total = output.numel()
+        print(f"Output is NaN {n_nan/n_total} ({n_nan}/{n_total})")
+    if torch.isnan(loss):
+        print("Loss is NaN")
+        return True
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            if torch.isnan(param.grad.data).any():
+                n_nan = torch.isnan(param.grad.data).sum().item()
+                n_total = param.grad.data.numel()
+                print(
+                    f"Gradient is NaN for {name} {n_nan/n_total} ({n_nan}/{n_total})"
+                )
+        if torch.isnan(param.data).any():
+            n_nan = torch.isnan(param.data).sum().item()
+            n_total = param.data.numel()
+            print(
+                f"Param is NaN for {name} {n_nan/n_total} ({n_nan}/{n_total})"
+            )
+    return False
 
 if __name__ == "__main__":
+
+    PROJECT_NAME = "transformer-encoder"
 
     ## Parse command-line arguments
     parser = argparse.ArgumentParser(description="Transformer Training Script")
@@ -292,7 +314,10 @@ if __name__ == "__main__":
         help="Track training progress with Weights and Biases",
     )
     parser.add_argument(
-        "wandb_run_id", type=str, default="", help="WandB run ID, set to resume run"
+        "--wandb_run_id", type=str, default="", help="WandB run ID, set to resume run"
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=None, help="Override the config batch size"
     )
     args = parser.parse_args()
 
@@ -323,6 +348,7 @@ if __name__ == "__main__":
     # "D://data/embedded_text/wikipedia_vocab64_seqlen15k/train"
     # data_dir = ".data\\tokenized_test_128"
     TRAIN_BATCH_SIZE = CONFIG_DICT["batch_size"]["value"]
+    TRAIN_OVERRIDE_BATCH_SIZE = args.batch_size
     TRAIN_N_EPOCHS = CONFIG_DICT["epochs"]["value"]
 
     ## Masking
@@ -345,12 +371,19 @@ if __name__ == "__main__":
 
     ## WandB
     FLAG_TRACK_WANDB = args.wandb
-    WANDB_RUN_ID = args.wandb_run_id
+    FLAG_RESUME_WANDB = args.wandb_run_id != ""
+    WANDB_RUN_ID = (
+        args.wandb_run_id
+        if args.wandb_run_id
+        else wandb.util.generate_id() if FLAG_TRACK_WANDB else ""
+    )
 
     ## Run name
     run_identifier = args.config_file.split("/")[-1].split(".")[0]
     # run_identifier = f"lrs{OPT_LR_SCALE}_wu{OPT_WARMUP_STEPS/1000:.1f}K".replace(".", "-")
-    run_suffix = time.strftime("%m%d_%H%M")
-    RUN_NAME = f"{run_identifier}_{run_suffix}"
+    run_time = time.strftime("%m%d_%H%M")
+    RUN_NAME = (
+        f"{run_identifier}_{run_time}{'_' + WANDB_RUN_ID if WANDB_RUN_ID else ''}"
+    )
 
     main()
