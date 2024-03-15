@@ -43,7 +43,9 @@ def main():
         TE_N_HEADS,
         TE_D_FF,
         padding_idx,
-        TE_DROPOUT,
+        dropout_ff=TE_DROPOUT,
+        dropout_mhsa=0,
+        use_custom_mhsa=False
     ).to(DEVICE)
 
     ## Initialise training objects - either from checkpoint or from scratch
@@ -170,6 +172,10 @@ def main():
 
             ## Optimize
             loss.backward()
+            if TRAIN_GRADIENT_CLIP is not None:
+                torch.nn.utils.clip_grad_norm_(
+                    transformer.parameters(), TRAIN_GRADIENT_CLIP
+                )
             optimizer.step()
             scheduler.step()
 
@@ -236,6 +242,7 @@ def print_progress(total_start, checkpoint_start, total_n_files, checkpoint_n_fi
         f"Total: {data_ops.seconds_to_ms(total_elapsed)} ({total_avg_time:.2f}s/file) | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({checkpoint_avg_time:.2f}s/file)"
     )
 
+
 def check_nans(model, output, loss):
     if torch.isnan(output).any():
         n_nan = torch.isnan(output).sum().item()
@@ -249,16 +256,13 @@ def check_nans(model, output, loss):
             if torch.isnan(param.grad.data).any():
                 n_nan = torch.isnan(param.grad.data).sum().item()
                 n_total = param.grad.data.numel()
-                print(
-                    f"Gradient is NaN for {name} {n_nan/n_total} ({n_nan}/{n_total})"
-                )
+                print(f"Gradient is NaN for {name} {n_nan/n_total} ({n_nan}/{n_total})")
         if torch.isnan(param.data).any():
             n_nan = torch.isnan(param.data).sum().item()
             n_total = param.data.numel()
-            print(
-                f"Param is NaN for {name} {n_nan/n_total} ({n_nan}/{n_total})"
-            )
+            print(f"Param is NaN for {name} {n_nan/n_total} ({n_nan}/{n_total})")
     return False
+
 
 if __name__ == "__main__":
 
@@ -319,6 +323,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch_size", type=int, default=None, help="Override the config batch size"
     )
+    parser.add_argument(
+        "--gradient_clip",
+        type=float,
+        default=None,
+        help="Override the config gradient clip value",
+    )
     args = parser.parse_args()
 
     ## Load configuration from YAML file
@@ -350,6 +360,15 @@ if __name__ == "__main__":
     TRAIN_BATCH_SIZE = CONFIG_DICT["batch_size"]["value"]
     TRAIN_OVERRIDE_BATCH_SIZE = args.batch_size
     TRAIN_N_EPOCHS = CONFIG_DICT["epochs"]["value"]
+    TRAIN_GRADIENT_CLIP = (
+        args.gradient_clip
+        if args.gradient_clip
+        else (
+            CONFIG_DICT["gradient_clip"]["value"]
+            if "gradient_clip" in CONFIG_DICT
+            else None
+        )
+    )
 
     ## Masking
     MASK_PROBABILITY = CONFIG_DICT["mask_probability"]["value"]
@@ -359,7 +378,10 @@ if __name__ == "__main__":
     ## Learning rate scheduler
     OPT_WARMUP_STEPS = CONFIG_DICT["warmup_steps"]["value"]
     OPT_LR_SCALE = CONFIG_DICT["lr_scale"]["value"]
-    OPT_WEIGHT_DECAY = CONFIG_DICT["weight_decay"]["value"]
+    OPT_WEIGHT_DECAY = (
+        CONFIG_DICT["weight_decay"]["value"] if "weight_decay" in CONFIG_DICT else 0
+    )
+    OPT_EPS = CONFIG_DICT["eps"]["value"] if "eps" in CONFIG_DICT else 1e-8
 
     ## Checkpointing
     FLAG_LOAD_CHECKPOINT = args.load_checkpoint != ""

@@ -81,71 +81,107 @@ class Embedding(nn.Module):
         return x
 
 
-class MultiHeadSelfAttention(nn.Module):
+class MultiHeadSelfAttentionModule(nn.Module):
     """Multi-head self-attention module for the encoder transformer model."""
 
     def __init__(
-        self, sequence_length: int, model_dim: int, k_dim: int, v_dim: int, n_heads: int
+        self,
+        sequence_length: int,
+        model_dim: int,
+        k_dim: int,
+        v_dim: int,
+        n_heads: int,
+        dropout: float = 0,
+        use_custom_mhsa: bool = True,
     ):
         super().__init__()
-        self.sequence_length = sequence_length
-        self.model_dim = model_dim
-        self.k_dim = k_dim
-        self.v_dim = v_dim
+        self.use_custom_mhsa = use_custom_mhsa
         self.n_heads = n_heads
+        self.k_dim = k_dim
 
-        self.linear_m_qk = nn.Linear(self.model_dim, self.n_heads * self.k_dim * 2)
+        self.linear_m_qk = nn.Linear(model_dim, n_heads * k_dim * 2)
         nn.init.xavier_normal_(self.linear_m_qk.weight)
-        self.linear_m_v = nn.Linear(self.model_dim, self.n_heads * self.v_dim)
+        self.linear_m_v = nn.Linear(model_dim, n_heads * v_dim)
         nn.init.xavier_normal_(self.linear_m_v.weight)
 
         self.softmax_k = nn.Softmax(dim=3)
 
-        self.linear_v_m = nn.Linear(self.n_heads * self.v_dim, self.model_dim)
-        nn.init.xavier_normal_(self.linear_v_m.weight)
+        if self.use_custom_mhsa:
+            self.linear_v_m = nn.Linear(n_heads * v_dim, model_dim)
+            nn.init.xavier_normal_(self.linear_v_m.weight)
+        else:
+            self.mhsa = nn.MultiheadAttention(
+                embed_dim=model_dim,
+                num_heads=n_heads,
+                kdim=k_dim * n_heads,  # kdim is for all heads not per
+                vdim=v_dim * n_heads,  # vdim is for all heads not per
+                dropout=dropout,
+                batch_first=True,
+            )
 
-        self.layer_norm = nn.LayerNorm([self.sequence_length, self.model_dim])
+        self.layer_norm = nn.LayerNorm([sequence_length, model_dim])
 
     def forward(self, x_attn_tuple: Tuple[torch.Tensor]) -> torch.Tensor:
         x, attention_mask = x_attn_tuple
         # x: b,s,m
         # attention_mask: b,s
 
-        ## Scaled Attention
-        qk = self.linear_m_qk(x)
-        # qk: b,s,h*k*2
-        qk = rearrange(qk, "b s (k n h) -> h b s k n", n=2, h=self.n_heads)
-        # qk: h,b,s,k,2
-        q, k = torch.split(qk, split_size_or_sections=1, dim=4)
-        # q,k: h,b,s,k,1
-        attn = torch.einsum("hbimz,hbjmz->hbij", [q, k]) / np.sqrt(self.k_dim)
-        # attn: h,b,s_q,s_v
-        attn = attn.masked_fill(
-            attention_mask.unsqueeze(0).unsqueeze(2) == 0, float("-inf")
-        )
-        attn = self.softmax_k(attn)  # Softmax along dim 3 (s_v)
+        ### Scaled Attention
+        if self.use_custom_mhsa:
+            ## Generate the query and key tensors
+            qk = self.linear_m_qk(x)
+            # qk: b,s,h*k*2
+            qk = rearrange(qk, "b s (k n h) -> h b s k n", n=2, h=self.n_heads)
+            # qk: h,b,s,k,2
+            q, k = torch.split(qk, split_size_or_sections=1, dim=4)
+            # q,k: h,b,s,k,1
 
-        ## Generate the value tensor
-        v = self.linear_m_v(x)
-        # v: b,s,v*h
-        v = rearrange(v, "b s (v h) -> h b s v", h=self.n_heads)
-        # v: h,b,s,v
+            ## Generate the value tensor
+            v = self.linear_m_v(x)
+            # v: b,s,v*h
+            v = rearrange(v, "b s (v h) -> h b s v", h=self.n_heads)
+            # v: h,b,s,v
 
-        ## Apply the attention weights to the values
-        out = torch.einsum("hbij,hbjv->hbiv", [attn, v])
-        # out: h,b,s,v
+            attn = torch.einsum("hbimz,hbjmz->hbij", [q, k]) / np.sqrt(self.k_dim)
+            # attn: h,b,s_q,s_v
+            attn = attn.masked_fill(
+                attention_mask.unsqueeze(0).unsqueeze(2), float("-inf")
+            )
+            attn = self.softmax_k(attn)  # Softmax along dim 3 (s_v)
 
-        ## Stack the output, map to d_model
-        out = rearrange(out, "h b s v -> b s (h v)")
-        # out: b,s,h*v
-        out = self.linear_v_m(out)
+            ## Apply the attention weights to the values
+            attn = torch.einsum("hbij,hbjv->hbiv", [attn, v])
+            # out: h,b,s,v
+
+            ## Stack the output, map to d_model
+            attn = rearrange(attn, "h b s v -> b s (h v)")
+            # out: b,s,h*v
+            attn = self.linear_v_m(attn)
+            # out: b,s,m
+
+        else:
+            ## Generate the query and key tensors
+            qk = self.linear_m_qk(x)
+            # qk: b,s,h*k*2
+            qk = rearrange(qk, "b s (k n) -> b s k n", n=2)
+            # qk: b,s,k,2
+            q, k = torch.split(qk, split_size_or_sections=1, dim=3)
+            # q,k: b,s,k,1
+
+            ## Generate the value tensor
+            v = self.linear_m_v(x)
+            # v: b,s,v*h
+
+            attn, _ = self.mhsa(
+                q.squeeze(3), k.squeeze(3), v, key_padding_mask=attention_mask
+            )
+            # out: b,s,m
+
+        ### Create residual connection to the input, then layer norm
+        attn = self.layer_norm(attn + x)
         # out: b,s,m
 
-        ## Create residual connection to the input, then layer norm
-        out = self.layer_norm(out + x)
-        # out: b,s,m
-
-        return out, attention_mask
+        return attn, attention_mask
 
 
 class FeedForward(nn.Module):
@@ -154,7 +190,7 @@ class FeedForward(nn.Module):
     model_dim -> ff_dim -> ReLU -> model_dim
     """
 
-    def __init__(self, model_dim: int, ff_dim: int, dropout_ratio: int = 0):
+    def __init__(self, model_dim: int, ff_dim: int, dropout: int = 0):
         super().__init__()
 
         self.linear_1 = nn.Linear(model_dim, ff_dim)
@@ -163,7 +199,7 @@ class FeedForward(nn.Module):
         self.linear_2 = nn.Linear(ff_dim, model_dim)
         nn.init.xavier_normal_(self.linear_2.weight)
         self.layer_norm = nn.LayerNorm([model_dim])
-        self.dropout = nn.Dropout(dropout_ratio)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.linear_1(x)
@@ -196,7 +232,9 @@ class EncoderTransformer(nn.Module):
         n_heads: int,
         ff_dim: int,
         padding_idx: int,
-        dropout_ratio: int = 0,
+        dropout_ff: int = 0,
+        dropout_mhsa: int = 0,
+        use_custom_mhsa: bool = True,
     ):
         super().__init__()
 
@@ -215,12 +253,14 @@ class EncoderTransformer(nn.Module):
             mhsa_modules.append(
                 (
                     f"mhsa_{i}",
-                    MultiHeadSelfAttention(
+                    MultiHeadSelfAttentionModule(
                         sequence_length=sequence_length,
                         model_dim=model_dim,
-                        n_heads=n_heads,
                         k_dim=k_dim,
                         v_dim=v_dim,
+                        n_heads=n_heads,
+                        dropout=dropout_mhsa,
+                        use_custom_mhsa=use_custom_mhsa,
                     ),
                 )
             )
@@ -228,7 +268,7 @@ class EncoderTransformer(nn.Module):
                 (
                     f"ff_{i}",
                     MHSAFeedForward(
-                        model_dim=model_dim, ff_dim=ff_dim, dropout_ratio=dropout_ratio
+                        model_dim=model_dim, ff_dim=ff_dim, dropout=dropout_ff
                     ),
                 )
             )
@@ -242,13 +282,61 @@ class EncoderTransformer(nn.Module):
     def forward(
         self, x: torch.Tensor, attention_mask: torch.Tensor = None
     ) -> torch.Tensor:
+        """Forward pass for the encoder transformer model.
+        attention_mask is a tensor of shape (batch_size, sequence_length) with 0s in the positions of padding tokens.
+        """
         # x: b,s
         x = self.embedding(x)
         # x: b,s,m
-        x_attn_tuple = self.mhsa((x, attention_mask))
+        x_attn_tuple = self.mhsa((x, attention_mask == 0))
         x = x_attn_tuple[0]
         # x: b,s,m
         x = self.output(x)
         # x: b,s,voc
 
         return x
+
+
+# class EncoderTransformerPrebuilt(nn.Module):
+#     def __init__(
+#         self,
+#         vocab_size: int,
+#         sequence_length: int,
+#         n_layers: int,
+#         embedding_dim: int,
+#         model_dim: int,
+#         k_dim: int,
+#         v_dim: int,
+#         n_heads: int,
+#         ff_dim: int,
+#         padding_idx: int,
+#         dropout_ratio: int = 0,
+#     ):
+
+#         ## Token and positional embedding layer
+#         self.embedding = Embedding(
+#             vocab_size=vocab_size,
+#             embedding_dim=embedding_dim,
+#             n_input_tokens=sequence_length,
+#             model_dim=model_dim,
+#             padding_idx=padding_idx,
+#         )
+
+#         ## Multi-head self-attention and feed forward modules for each layer
+#         mhsa_modules = []
+#         for i in range(n_layers):
+#             # Use torch.nn.MultiheadAttention
+#             mhsa_modules.append(
+#                 (
+#                     f"mhsa_{i}",
+#                     nn.MultiheadAttention(
+#                         embed_dim=model_dim, num_heads=n_heads, dropout=dropout_ratio
+#                     ),
+#                 )
+#             )
+#         self.mhsa = nn.Sequential(OrderedDict(mhsa_modules))
+
+#         ## Output layer - likelihood of each token at each position
+#         self.output = nn.Sequential(
+#             nn.Linear(model_dim, vocab_size),
+#         )
