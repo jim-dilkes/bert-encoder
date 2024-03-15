@@ -78,11 +78,5 @@ def load_checkpoint(filepath, transformer, optimizer, scheduler, data_loader):
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
     data_loader.load_state_dict(checkpoint["dataloader_state_dict"])
-    global_step = (
-        checkpoint["global_step"]
-        if "global_step" in checkpoint
-        else optimizer.state_dict()["state"][optimizer.param_groups[0]["params"][0]][
-            "step"
-        ]
-    )
+    global_step = checkpoint["global_step"] if "global_step" in checkpoint else 0
     return checkpoint["epoch"], global_step
