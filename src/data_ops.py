@@ -235,14 +235,15 @@ class DataLoader:
     def _prepare_batches(
         data, batch_size: int, hanging_batch: torch.Tensor = None
     ) -> tuple[torch.Tensor, torch.Tensor] | tuple[None, None]:
-        if hanging_batch is not None:
-            if data is None:
-                return (
-                    None,
-                    None,
-                )  # No more data to load, return None to force StopIteration
-            else:
-                data = torch.cat([hanging_batch, data], dim=0)
+        if data is None:
+            if hanging_batch is None:  # If no data is left, return None
+                return None, None
+            else:  # If only the hanging batch is left, return it as the final batch
+                return None, hanging_batch
+        elif (
+            hanging_batch is not None
+        ):  # If there is a hanging batch and data, prepend the hanging batch to the data
+            data = torch.cat([hanging_batch, data], dim=0)
         n_batches = len(data) // batch_size
 
         # Extract hanging batch
