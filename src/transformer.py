@@ -133,8 +133,8 @@ class MultiHeadSelfAttentionModule(nn.Module):
             # qk: b,s,h*k*2
             qk = rearrange(qk, "b s (k n h) -> h b s k n", n=2, h=self.n_heads)
             # qk: h,b,s,k,2
-            q, k = torch.split(qk, split_size_or_sections=1, dim=4)
-            # q,k: h,b,s,k,1
+            q, k = torch.chunk(qk, chunks=2, dim=-1)
+            # q,k: h,b,s,k
 
             ## Generate the value tensor
             v = self.linear_m_v(x)
@@ -159,13 +159,13 @@ class MultiHeadSelfAttentionModule(nn.Module):
             attn = self.linear_v_m(attn)
             # out: b,s,m
 
-        else:
+        else:  # Built-in MultiheadAttention, actually seems ~10% slower
             ## Generate the query and key tensors
             qk = self.linear_m_qk(x)
             # qk: b,s,h*k*2
             qk = rearrange(qk, "b s (k n) -> b s k n", n=2)
             # qk: b,s,k,2
-            q, k = torch.split(qk, split_size_or_sections=1, dim=3)
+            q, k = torch.chunk(qk, chunks=2, dim=-1)
             # q,k: b,s,k,1
 
             ## Generate the value tensor
