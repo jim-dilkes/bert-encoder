@@ -45,7 +45,7 @@ def main():
         padding_idx,
         dropout_ff=TE_DROPOUT,
         dropout_mhsa=0,
-        use_custom_mhsa=False
+        use_custom_mhsa=True,
     ).to(DEVICE)
 
     ## Initialise training objects - either from checkpoint or from scratch
@@ -194,6 +194,7 @@ def main():
                     {
                         "epoch": epoch,
                         "batch_number": batch_counter,
+                        "global_step": global_step,
                         "cross_entropy": loss.item(),
                         "learning_rate": scheduler.get_last_lr()[0],
                         "weight_stats": weight_stats,
@@ -207,25 +208,25 @@ def main():
         initial_file_idx = 0
         last_checkpoint_idx = -1  # to ensure the first checkpoint is saved
 
-    ## Save final model
-    save_checkpoint(
-        CHKPT_EPOCH_DIR,
-        transformer,
-        optimizer,
-        scheduler,
-        data_loader,
-        RUN_NAME,
-        epoch + 1,
-        global_step,
-        file_idx=0,
-        max_checkpoints=CHKPT_MAX_CHECKPOINTS,
-    )
-    print_progress(
-        start,
-        checkpoint_start,
-        file_idx - initial_file_idx,
-        file_idx - last_checkpoint_idx,
-    )
+        ## Save final model
+        save_checkpoint(
+            CHKPT_EPOCH_DIR,
+            transformer,
+            optimizer,
+            scheduler,
+            data_loader,
+            RUN_NAME,
+            epoch + 1,
+            global_step,
+            file_idx=0,
+            max_checkpoints=CHKPT_MAX_CHECKPOINTS,
+        )
+        print_progress(
+            start,
+            checkpoint_start,
+            file_idx - initial_file_idx,
+            file_idx - last_checkpoint_idx,
+        )
 
 
 def print_progress(total_start, checkpoint_start, total_n_files, checkpoint_n_files):
