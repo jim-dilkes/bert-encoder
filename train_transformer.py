@@ -180,7 +180,7 @@ def main():
             scheduler.step()
 
             ## Track
-            if FLAG_TRACK_WANDB:
+            if FLAG_TRACK_WANDB and global_step % WANDB_LOG_FREQ == 0:
                 grad_norms = {}
                 weight_stats = {}
                 for name, param in transformer.named_parameters():
@@ -330,6 +330,12 @@ if __name__ == "__main__":
         default=None,
         help="Override the config gradient clip value",
     )
+    parser.add_argument(
+        "--wandb_log_freq",
+        type=int,
+        default=100,
+        help="Number of batches between each log entry",
+    )
     args = parser.parse_args()
 
     ## Load configuration from YAML file
@@ -400,6 +406,7 @@ if __name__ == "__main__":
         if args.wandb_run_id
         else wandb.util.generate_id() if FLAG_TRACK_WANDB else ""
     )
+    WANDB_LOG_FREQ = args.wandb_log_freq
 
     ## Run name
     run_identifier = args.config_file.split("/")[-1].split(".")[0]
