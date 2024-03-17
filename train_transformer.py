@@ -156,7 +156,7 @@ def main():
                     pad_id=padding_idx,
                     mask_prob=MASK_PROBABILITY,
                     vocab_low_high=(5, vocab_size),
-                    proportion_mask_token=MASK_PROPORTION_MASK_TAKEN,
+                    proportion_mask_token=MASK_PROPORTION_MASK_TOKEN,
                     proportion_random_token=MASK_PROPORTION_RANDOM_TOKEN,
                 )
             )
@@ -384,7 +384,7 @@ if __name__ == "__main__":
 
     ## Masking
     MASK_PROBABILITY = CONFIG_DICT["mask_probability"]["value"]
-    MASK_PROPORTION_MASK_TAKEN = CONFIG_DICT["proportion_mask_token"]["value"]
+    MASK_PROPORTION_MASK_TOKEN = CONFIG_DICT["proportion_mask_token"]["value"]
     MASK_PROPORTION_RANDOM_TOKEN = CONFIG_DICT["proportion_random_token"]["value"]
 
     ## Learning rate scheduler
