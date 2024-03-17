@@ -47,6 +47,7 @@ def main():
         dropout_mhsa=0,
         use_custom_mhsa=True,
     ).to(DEVICE)
+    n_params = sum(p.numel() for p in transformer.parameters() if p.requires_grad)
 
     ## Initialise training objects - either from checkpoint or from scratch
     if FLAG_LOAD_CHECKPOINT:
@@ -103,18 +104,16 @@ def main():
                         "tokenizer": TOKENIZER_FILEPATH,
                         "vocab_size": vocab_size,
                         "sequence_length": sequence_length,
+                        "model_config": {k: v["value"] for k, v in CONFIG_DICT.items()},
+                        "model_n_params": n_params,
                     },
-                    # Extract the values from the config dictionary
-                    **{k: v["value"] for k, v in CONFIG_DICT.items()},
                 ),
             )
     weight_tracking_startswith = tuple(["embedding", "mhsa.mhsa_0", "output"])
 
     print("Training transformer model:")
     print(transformer)
-    print(
-        f"Number of parameters: {sum(p.numel() for p in transformer.parameters() if p.requires_grad)}\n"
-    )
+    print(f"Number of parameters: {n_params}\n")
 
     for epoch in range(start_epoch, TRAIN_N_EPOCHS):
         print(f"Epoch {epoch}/{TRAIN_N_EPOCHS-1}")
