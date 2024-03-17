@@ -12,6 +12,7 @@ def save_checkpoint(
     run_name,
     epoch,
     global_step,
+    global_examples_last_epoch,
     file_idx,
     max_checkpoints=None,
 ):
@@ -50,6 +51,7 @@ def save_checkpoint(
         {
             "epoch": epoch,
             "global_step": global_step,
+            "global_examples_last_epoch": global_examples_last_epoch,
             "model_state_dict": transformer.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict(),
@@ -79,4 +81,9 @@ def load_checkpoint(filepath, transformer, optimizer, scheduler, data_loader):
     scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
     data_loader.load_state_dict(checkpoint["dataloader_state_dict"])
     global_step = checkpoint["global_step"] if "global_step" in checkpoint else 0
-    return checkpoint["epoch"], global_step
+    global_examples_last_epoch = (
+        checkpoint["global_examples_last_epoch"]
+        if "global_examples_last_epoch" in checkpoint
+        else 0
+    )
+    return checkpoint["epoch"], global_step, global_examples_last_epoch

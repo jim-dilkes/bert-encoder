@@ -57,7 +57,7 @@ def main():
         data_loader = data_ops.DataLoader(
             TRAIN_DATA_DIR, find_files=False, device=DEVICE
         )
-        start_epoch, global_step = load_checkpoint(
+        start_epoch, global_step, global_examples_last_epoch = load_checkpoint(
             os.path.join(CHKPT_LOAD_FILEPATH),
             transformer,
             optimizer,
@@ -78,6 +78,7 @@ def main():
 
         start_epoch = 0
         global_step = 0
+        global_examples_last_epoch = 0
         file_idx = 0
         initial_file_idx = 0
 
@@ -134,6 +135,7 @@ def main():
                     RUN_NAME,
                     epoch,
                     global_step,
+                    global_examples_last_epoch,
                     file_idx,
                     CHKPT_MAX_CHECKPOINTS,
                 )
@@ -194,6 +196,8 @@ def main():
                         "epoch": epoch,
                         "batch_number": batch_counter,
                         "global_step": global_step,
+                        "global_examples": global_examples_last_epoch
+                        + data_loader.example_counter,
                         "cross_entropy": loss.item(),
                         "learning_rate": scheduler.get_last_lr()[0],
                         "weight_stats": weight_stats,
@@ -206,6 +210,7 @@ def main():
         ## Reset loaded variables
         initial_file_idx = 0
         last_checkpoint_idx = -1  # to ensure the first checkpoint is saved
+        global_examples_last_epoch = data_loader.example_counter
 
         ## Save final model
         save_checkpoint(
@@ -217,6 +222,7 @@ def main():
             RUN_NAME,
             epoch + 1,
             global_step,
+            global_examples_last_epoch,
             file_idx=0,
             max_checkpoints=CHKPT_MAX_CHECKPOINTS,
         )
