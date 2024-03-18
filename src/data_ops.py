@@ -25,7 +25,7 @@ def create_directory(directory: str, reset: bool = False):
 def gather_files(directory: str, file_extension: str = None) -> list[str]:
     """Gather a list of filepaths from a directory and its subdirectories. Optionally filter by file_extension."""
     file_list = []
-    for root, dirs, files in os.walk(directory):
+    for root, _, files in os.walk(directory):
         for file in files:
             if file_extension is None or file[-len(file_extension) :] == file_extension:
                 file_list.append(os.path.join(root, file))
@@ -80,7 +80,7 @@ def mask_tokens(
         vocab_low_high[0],
         vocab_low_high[1],
         input_batch.shape,
-        dtype=torch.long,
+        dtype=input_batch.dtype,
         device=use_device,
     )
     masked_input_batch[random_tokens_bool] = random_words[random_tokens_bool]
