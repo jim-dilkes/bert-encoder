@@ -31,6 +31,9 @@ epochs:
 batch_size:
   desc: Size of each mini-batch
   value: 512
+gradient_clip:
+  desc: Gradient clipping value
+  value: 1.0
 
 # Optimizer
 warmup_steps:

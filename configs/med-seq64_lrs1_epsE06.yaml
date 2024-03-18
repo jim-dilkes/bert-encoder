@@ -42,6 +42,9 @@ lr_scale:
 weight_decay:
   desc: Weight decay for optimizer
   value: 0.01
+eps:
+  desc: Epsilon value for Adam optimizer
+  value: 1e-6
 
 # Masking
 mask_probability:

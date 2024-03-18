@@ -49,7 +49,7 @@ mask_probability:
   value: 0.15
 proportion_mask_token:
   desc: Proportion of tokens to mask
-  value: 0.8
+  value: 0.0
 proportion_random_token:
   desc: Proportion of tokens to replace with a random token
-  value: 0.1
+  value: 0.0

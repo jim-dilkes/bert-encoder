@@ -27,10 +27,10 @@ n_heads:
 # Training
 epochs:
   desc: Number of epochs to train over
-  value: 3
+  value: 240000
 batch_size:
   desc: Size of each mini-batch
-  value: 512
+  value: 242
 
 # Optimizer
 warmup_steps:

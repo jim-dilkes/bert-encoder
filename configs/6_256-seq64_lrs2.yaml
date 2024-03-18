@@ -1,13 +1,13 @@
 # Model
 d_model:
   desc: Model dimension
-  value: 512
+  value: 256
 d_embedding:
   desc: Embedding dimension
-  value: 512
+  value: 256
 d_ff:
   desc: Feedforward dimension
-  value: 2048
+  value: 1024
 d_k:
   desc: Key dimension
   value: 64
@@ -16,13 +16,13 @@ d_v:
   value: 64
 n_layers:
   desc: Number of layers
-  value: 8
+  value: 6
 dropout:
   desc: Dropout rate
   value: 0.1
 n_heads:
   desc: Number of heads
-  value: 8
+  value: 4
 
 # Training
 epochs:
@@ -30,7 +30,7 @@ epochs:
   value: 3
 batch_size:
   desc: Size of each mini-batch
-  value: 512
+  value: 1200
 
 # Optimizer
 warmup_steps:
@@ -38,7 +38,7 @@ warmup_steps:
   value: 10000
 lr_scale:
   desc: Learning rate scale
-  value: 1
+  value: 2
 weight_decay:
   desc: Weight decay for optimizer
   value: 0.01

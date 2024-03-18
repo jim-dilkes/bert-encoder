@@ -38,7 +38,7 @@ warmup_steps:
   value: 10000
 lr_scale:
   desc: Learning rate scale
-  value: 1
+  value: 0.2
 weight_decay:
   desc: Weight decay for optimizer
   value: 0.01
