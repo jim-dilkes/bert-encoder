@@ -5,16 +5,13 @@ from . import data_ops
 
 def save_checkpoint(
     checkpoint_dir,
+    counters,
     transformer,
     optimizer,
     scheduler,
     data_loader,
     run_name,
-    epoch,
-    global_step,
-    global_examples_last_epoch,
-    file_idx,
-    max_checkpoints=None,
+    max_checkpoints=5,
 ):
     """Save a checkpoint to a file
 
@@ -30,10 +27,11 @@ def save_checkpoint(
     """
 
     checkpoint_filepath = os.path.join(
-        checkpoint_dir, f"{run_name}_epoch{epoch}_file{file_idx}.pt"
+        checkpoint_dir,
+        f"{run_name}_epoch{counters['epoch']}_batch{counters['epoch_batches']}.pt",
     )
     print(
-        f"Saving checkpoint prior to file {file_idx} in epoch {epoch} to {checkpoint_filepath}"
+        f"Saving checkpoint for epoch {counters['epoch']} after (global: {counters['global_batches']}, epoch: {counters['epoch_batches']}) batches to {checkpoint_filepath}"
     )
 
     # Remove old checkpoints if there are too many
@@ -49,9 +47,7 @@ def save_checkpoint(
     # Save the checkpoint
     torch.save(
         {
-            "epoch": epoch,
-            "global_step": global_step,
-            "global_examples_last_epoch": global_examples_last_epoch,
+            "counters": counters,
             "model_state_dict": transformer.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
             "scheduler_state_dict": scheduler.state_dict(),
@@ -80,10 +76,4 @@ def load_checkpoint(filepath, transformer, optimizer, scheduler, data_loader):
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
     data_loader.load_state_dict(checkpoint["dataloader_state_dict"])
-    global_step = checkpoint["global_step"] if "global_step" in checkpoint else 0
-    global_examples_last_epoch = (
-        checkpoint["global_examples_last_epoch"]
-        if "global_examples_last_epoch" in checkpoint
-        else 0
-    )
-    return checkpoint["epoch"], global_step, global_examples_last_epoch
+    return checkpoint["counters"]

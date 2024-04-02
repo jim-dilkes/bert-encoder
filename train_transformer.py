@@ -1,5 +1,6 @@
 import argparse
 import os
+from math import exp
 import yaml
 import time
 
@@ -9,6 +10,7 @@ import torch.optim as optim
 from src import data_ops
 from src import loss_functions
 from src.checkpoints import load_checkpoint, save_checkpoint
+from src.asynchronousbatchloader import AsynchronousBatchLoader
 from src.transformer import EncoderTransformer
 
 from tokenizers import Tokenizer
@@ -54,19 +56,29 @@ def main():
         print(f"Loading checkpoint from {CHKPT_LOAD_FILEPATH}")
         optimizer = optim.Adam(transformer.parameters())
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-        data_loader = data_ops.DataLoader(
-            TRAIN_DATA_DIR, find_files=False, device=DEVICE
+        data_loader = AsynchronousBatchLoader(
+            TRAIN_DATA_DIR, TRAIN_BATCH_SIZE, device=DEVICE  # , debug=True
         )
-        start_epoch, global_step, global_examples_last_epoch = load_checkpoint(
+        counters = load_checkpoint(
             os.path.join(CHKPT_LOAD_FILEPATH),
             transformer,
             optimizer,
             scheduler,
             data_loader,
         )
-        file_idx = data_loader.file_idx
-        initial_file_idx = file_idx
-        last_checkpoint_idx = file_idx
+        initial_epoch = counters["epoch"]
+        initial_n_batches = counters["global_batches"]
+        last_checkpoint_n_batches = counters["global_batches"]
+        initial_n_examples = counters["global_train_examples"]
+        last_checkpoint_n_examples = counters["global_train_examples"]
+
+        FLAG_RESCALE_LR = True
+        if FLAG_RESCALE_LR:
+            scale_factor = 0.3
+            print("Rescaling learning rate by ", scale_factor)
+            for param_group in optimizer.param_groups:
+                param_group["lr"] = OPT_LR_SCALE
+
     else:
         data_ops.create_directory(CHKPT_DIR, reset=True)
         data_ops.create_directory(CHKPT_EPOCH_DIR, reset=True)
@@ -76,17 +88,29 @@ def main():
         )
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-        start_epoch = 0
-        global_step = 0
-        global_examples_last_epoch = 0
-        file_idx = 0
-        initial_file_idx = 0
+        initial_epoch = 0
+        initial_n_batches = 0
+        last_checkpoint_n_batches = 0
+        initial_n_examples = 0
+        last_checkpoint_n_examples = 0
 
-        # Keep only the relative path from the data directory
-        data_loader = data_ops.DataLoader(
-            TRAIN_DATA_DIR, TRAIN_BATCH_SIZE, device=DEVICE
+        max_file_size = 10_000
+        batch_per_file = max_file_size // TRAIN_BATCH_SIZE
+        data_loader = AsynchronousBatchLoader(
+            TRAIN_DATA_DIR,
+            TRAIN_BATCH_SIZE,
+            device=DEVICE,
+            max_queue_size=3 * batch_per_file,  # Load max 3 files of batches queued
+            # debug=True,
         )
-        last_checkpoint_idx = 0
+
+        counters = {
+            "epoch": 0,
+            "epoch_batches": 0,
+            "global_batches": 0,
+            "epoch_train_examples": 0,
+            "global_train_examples": 0,
+        }
 
     if TRAIN_OVERRIDE_BATCH_SIZE is not None:
         data_loader.batch_size = TRAIN_OVERRIDE_BATCH_SIZE
@@ -116,37 +140,14 @@ def main():
     print(transformer)
     print(f"Number of parameters: {n_params}\n")
 
-    for epoch in range(start_epoch, TRAIN_N_EPOCHS):
-        print(f"Epoch {epoch}/{TRAIN_N_EPOCHS-1}")
+    for _ in range(initial_epoch, TRAIN_N_EPOCHS):
+        print(f"Epoch {counters['epoch']+1}/{TRAIN_N_EPOCHS} (idx {counters['epoch']})")
         start = time.time()
         checkpoint_start = time.time()
 
-        for batch, batch_counter, file_idx in data_loader:
+        for batch, this_batch_size in data_loader:
+            # print(f"Batch {i} received with {this_batch_size} examples")
             optimizer.zero_grad()
-
-            ## Checkpoint
-            if file_idx % CHKPT_RECORD_EVERY == 0 and file_idx > last_checkpoint_idx:
-                save_checkpoint(
-                    CHKPT_DIR,
-                    transformer,
-                    optimizer,
-                    scheduler,
-                    data_loader,
-                    RUN_NAME,
-                    epoch,
-                    global_step,
-                    global_examples_last_epoch,
-                    file_idx,
-                    CHKPT_MAX_CHECKPOINTS,
-                )
-                print_progress(
-                    start,
-                    checkpoint_start,
-                    file_idx - initial_file_idx,
-                    file_idx - last_checkpoint_idx,
-                )
-                checkpoint_start = time.time()
-                last_checkpoint_idx = file_idx
 
             ## Mask tokens
             batch_masked, batch_masked_bool, batch_attention_mask = (
@@ -170,7 +171,6 @@ def main():
             loss = loss_functions.cross_entropy(
                 batch_all_token_outputs, batch, batch_masked_bool
             )
-
             ## Optimize
             loss.backward()
             if TRAIN_GRADIENT_CLIP is not None:
@@ -180,94 +180,150 @@ def main():
             optimizer.step()
             scheduler.step()
 
+            # print(f"Batch {i} processed")
+
             ## Track
-            if FLAG_TRACK_WANDB and global_step % WANDB_LOG_FREQ == 0:
-                grad_norms = {}
-                weight_stats = {}
-                for name, param in transformer.named_parameters():
-                    if name.startswith(weight_tracking_startswith):
-                        if param.grad is not None:
-                            grad_norms[name] = param.grad.data.norm(2).item()
-                        weight_stats[name + "_mean"] = param.data.mean().item()
-                        weight_stats[name + "_std"] = param.data.std().item()
-
-                wandb.log(
-                    {
-                        "epoch": epoch,
-                        "batch_number": batch_counter,
-                        "global_step": global_step,
-                        "global_examples": global_examples_last_epoch
-                        + data_loader.example_counter,
-                        "cross_entropy": loss.item(),
-                        "learning_rate": scheduler.get_last_lr()[0],
-                        "weight_stats": weight_stats,
-                        "grad_norms": grad_norms,
-                    }
+            if counters["global_batches"] % WANDB_LOG_FREQ == 0:
+                print_progress(
+                    start,
+                    checkpoint_start,
+                    counters["global_batches"] - initial_n_batches,
+                    counters["global_batches"] - last_checkpoint_n_batches,
+                    counters["global_train_examples"] - initial_n_examples,
+                    counters["global_train_examples"] - last_checkpoint_n_examples,
+                    counters["global_batches"],
+                    counters["global_train_examples"],
                 )
+                if FLAG_TRACK_WANDB:
+                    grad_norms = {}
+                    weight_stats = {}
+                    for name, param in transformer.named_parameters():
+                        if name.startswith(weight_tracking_startswith):
+                            if param.grad is not None:
+                                grad_norms[name] = param.grad.data.norm(2).item()
+                            weight_stats[name + "_mean"] = param.data.mean().item()
+                            weight_stats[name + "_std"] = param.data.std().item()
 
-            global_step += 1
+                    wandb.log(
+                        {
+                            "epoch": counters["epoch"],
+                            "epoch_batches_seen": counters["epoch_batches"],
+                            "global_batches_seen": counters["global_batches"],
+                            "epoch_train_examples_seen": counters[
+                                "epoch_train_examples"
+                            ],
+                            "global_train_examples_seen": counters[
+                                "global_train_examples"
+                            ],
+                            "cross_entropy": loss.item(),
+                            "probability": exp(-loss.item()),
+                            "learning_rate": scheduler.get_last_lr()[0],
+                            "weight_stats": weight_stats,
+                            "grad_norms": grad_norms,
+                        }
+                    )
 
-        ## Reset loaded variables
-        initial_file_idx = 0
-        last_checkpoint_idx = -1  # to ensure the first checkpoint is saved
-        global_examples_last_epoch = data_loader.example_counter
+            counters["epoch_batches"] += 1
+            counters["global_batches"] += 1
+            counters["epoch_train_examples"] += this_batch_size
+            counters["global_train_examples"] += this_batch_size
 
-        ## Save final model
+            ## Checkpoint
+            if (
+                counters["global_batches"] % CHKPT_RECORD_EVERY == 0
+                and counters["global_batches"] > last_checkpoint_n_batches
+            ):
+                save_checkpoint(
+                    CHKPT_DIR,
+                    counters,
+                    transformer,
+                    optimizer,
+                    scheduler,
+                    data_loader,
+                    RUN_NAME,
+                    CHKPT_MAX_CHECKPOINTS,
+                )
+                # print_progress(
+                #     start,
+                #     checkpoint_start,
+                #     counters["global_batches"] - initial_n_batches,
+                #     counters["global_batches"] - last_checkpoint_n_batches,
+                #     counters["global_train_examples"],
+                #     counters["global_train_examples"] - last_checkpoint_n_examples,
+                # )
+                checkpoint_start = time.time()
+                last_checkpoint_n_batches = counters["global_batches"]
+                last_checkpoint_n_examples = counters["global_train_examples"]
+
+        ## Save epoch model
+        print(
+            f"Epoch {counters['epoch'] + 1} of {TRAIN_N_EPOCHS} complete (idx {counters['epoch']}), saving checkpoint for next epoch start"
+        )
+        counters["epoch"] += 1
+        counters["epoch_batches"] = 0
+        counters["epoch_train_examples"] = 0
         save_checkpoint(
             CHKPT_EPOCH_DIR,
+            counters,
             transformer,
             optimizer,
             scheduler,
             data_loader,
             RUN_NAME,
-            epoch + 1,
-            global_step,
-            global_examples_last_epoch,
-            file_idx=0,
-            max_checkpoints=CHKPT_MAX_CHECKPOINTS,
-        )
-        print_progress(
-            start,
-            checkpoint_start,
-            file_idx - initial_file_idx,
-            file_idx - last_checkpoint_idx,
+            CHKPT_MAX_CHECKPOINTS,
         )
 
 
-def print_progress(total_start, checkpoint_start, total_n_files, checkpoint_n_files):
-    if total_n_files == 0:
+def print_progress(
+    total_start,
+    checkpoint_start,
+    this_session_n_batches,
+    checkpoint_n_batches,
+    this_session_n_examples,
+    checkpoint_n_examples,
+    total_n_batches,
+    total_n_examples,
+):
+    if this_session_n_batches == 0:
         return
     total_elapsed = time.time() - total_start
     checkpoint_elapsed = time.time() - checkpoint_start
-    total_avg_time = total_elapsed / total_n_files
+    total_avg_time = total_elapsed / this_session_n_batches
     checkpoint_avg_time = (
-        checkpoint_elapsed / checkpoint_n_files if checkpoint_n_files > 0 else 0
+        checkpoint_elapsed / checkpoint_n_batches if checkpoint_n_batches > 0 else 0
     )
+    total_ex_s = int(this_session_n_examples / total_elapsed)
+    checkpoint_ex_s = int(checkpoint_n_examples / checkpoint_elapsed)
 
     print(
-        f"Total: {data_ops.seconds_to_ms(total_elapsed)} ({total_avg_time:.2f}s/file) | Checkpoint: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({checkpoint_avg_time:.2f}s/file)"
+        f"Done {total_n_batches} batches / {total_n_examples} examples total, {this_session_n_batches} batches / {this_session_n_examples} examples this session, {checkpoint_n_batches} batches / {checkpoint_n_examples} examples this checkpoint | Session time: {data_ops.seconds_to_ms(total_elapsed)} ({total_avg_time:.4f}s/batch, {total_ex_s}ex/s) | Checkpoint time: {data_ops.seconds_to_ms(checkpoint_elapsed)} ({checkpoint_avg_time:.4f}s/batch, {checkpoint_ex_s}ex/s)"
     )
 
 
 def check_nans(model, output, loss):
+    flag_nan = False
     if torch.isnan(output).any():
         n_nan = torch.isnan(output).sum().item()
         n_total = output.numel()
         print(f"Output is NaN {n_nan/n_total} ({n_nan}/{n_total})")
+        flag_nan = True
     if torch.isnan(loss):
         print("Loss is NaN")
-        return True
+        flag_nan = True
     for name, param in model.named_parameters():
         if param.grad is not None:
             if torch.isnan(param.grad.data).any():
                 n_nan = torch.isnan(param.grad.data).sum().item()
                 n_total = param.grad.data.numel()
                 print(f"Gradient is NaN for {name} {n_nan/n_total} ({n_nan}/{n_total})")
+                flag_nan = True
         if torch.isnan(param.data).any():
             n_nan = torch.isnan(param.data).sum().item()
             n_total = param.data.numel()
             print(f"Param is NaN for {name} {n_nan/n_total} ({n_nan}/{n_total})")
-    return False
+            flag_nan = True
+
+    return flag_nan
 
 
 if __name__ == "__main__":
@@ -309,7 +365,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--checkpoint_every",
         type=int,
-        default=50,
+        default=1000,
         help="Number of batches between each checkpoint",
     )
     parser.add_argument(
