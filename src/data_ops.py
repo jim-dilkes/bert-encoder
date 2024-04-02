@@ -65,25 +65,26 @@ def mask_tokens(
     masked_input_batch.masked_fill_(replaced_tokens_bool, mask_id)
 
     # replace masked input tokens with random word
-    random_tokens_bool = (
-        torch.bernoulli(
-            torch.full(
-                input_batch.shape,
-                proportion_random_token / (1 - proportion_mask_token),
-                device=use_device,
-            )
-        ).bool()
-        & masked_tokens_bool
-        & ~replaced_tokens_bool
-    )
-    random_words = torch.randint(
-        vocab_low_high[0],
-        vocab_low_high[1],
-        input_batch.shape,
-        dtype=input_batch.dtype,
-        device=use_device,
-    )
-    masked_input_batch[random_tokens_bool] = random_words[random_tokens_bool]
+    if not (proportion_random_token == 0 or proportion_mask_token == 1):
+        random_tokens_bool = (
+            torch.bernoulli(
+                torch.full(
+                    input_batch.shape,
+                    proportion_random_token / (1 - proportion_mask_token),
+                    device=use_device,
+                )
+            ).bool()
+            & masked_tokens_bool
+            & ~replaced_tokens_bool
+        )
+        random_words = torch.randint(
+            vocab_low_high[0],
+            vocab_low_high[1],
+            input_batch.shape,
+            dtype=input_batch.dtype,
+            device=use_device,
+        )
+        masked_input_batch[random_tokens_bool] = random_words[random_tokens_bool]
 
     attention_mask = (~padding_mask).long()
 
