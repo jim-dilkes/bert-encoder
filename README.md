@@ -6,7 +6,7 @@ It supports flexible configurations through a YAML file, batch processing with a
 
 ## How to Use
 1. Prepare your tokenizer - uses the Hugging Face [tokenizers](https://huggingface.co/docs/tokenizers/) library.
-2. Prepare your data.
+2. Prepare your data:
 
     a. Pre-tokenize the data and store it as .pt files containing only the tensor of tokenized data for some number of examples.
     
