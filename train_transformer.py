@@ -328,7 +328,7 @@ def check_nans(model, output, loss):
 
 if __name__ == "__main__":
 
-    PROJECT_NAME = "transformer-encoder"
+    
 
     ## Parse command-line arguments
     parser = argparse.ArgumentParser(description="Transformer Training Script")
@@ -397,8 +397,12 @@ if __name__ == "__main__":
         default=100,
         help="Number of batches between each log entry",
     )
+    parser.add_argument(
+        "--wandb_project_name", type=str, default="", help="WandB project name"
+    )
+   
     args = parser.parse_args()
-
+    
     ## Load configuration from YAML file
     with open(os.path.join(args.config_dir, args.config_file), "r") as file:
         CONFIG_DICT = yaml.safe_load(file)
@@ -462,6 +466,7 @@ if __name__ == "__main__":
     ## WandB
     FLAG_TRACK_WANDB = args.wandb
     FLAG_RESUME_WANDB = args.wandb_run_id != ""
+    PROJECT_NAME = args.wandb_project_name
     WANDB_RUN_ID = (
         args.wandb_run_id
         if args.wandb_run_id
